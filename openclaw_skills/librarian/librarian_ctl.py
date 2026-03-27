@@ -262,6 +262,95 @@ def ingest_vault_note(
     return passage_id
 
 
+def register_agent(
+    db_path: str,
+    agent_id: str,
+    name: str,
+    version: str = "1.0",
+    description: str = "",
+    tool_names: str = "",
+    profile_content: str = None,
+    force: bool = False,
+) -> None:
+    """Register a new agent in factory.db and optionally write its persona profile.
+
+    Security invariants:
+      - profile file is written to WORKSPACE_ROOT/{agent_id}.md via validate_path() (Airlock).
+      - Raises ValueError if agent_id already exists and force=False.
+      - Logs AGENT_REGISTERED to audit_logs on success.
+
+    Args:
+        db_path:         Path to factory.db.
+        agent_id:        Unique agent identifier (kebab-case, e.g. 'my-analyst-01').
+        name:            Human-readable agent name.
+        version:         Agent version string (default '1.0').
+        description:     Short description of the agent's role.
+        tool_names:      Comma-separated list of tools the agent may invoke.
+        profile_content: Optional Markdown persona text to write as a .md profile file.
+        force:           If True, overwrites an existing agent with the same agent_id.
+
+    Raises:
+        ValueError:      If agent_id or name is empty, or if agent_id already exists (force=False).
+        PermissionError: If profile path breaches the Airlock.
+    """
+    if not agent_id or not agent_id.strip():
+        raise ValueError("agent_id must not be empty.")
+    if not name or not name.strip():
+        raise ValueError("name must not be empty.")
+
+    valid_db = validate_path(db_path)
+
+    with sqlite3.connect(valid_db) as conn:
+        # Check for existing agent
+        existing = conn.execute(
+            "SELECT agent_id FROM agents WHERE agent_id = ?", (agent_id,)
+        ).fetchone()
+
+        if existing and not force:
+            raise ValueError(
+                f"Agent '{agent_id}' already exists in the database. "
+                "Use --force to overwrite."
+            )
+
+        if force:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO agents (agent_id, name, version, description, tool_names)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (agent_id, name, version, description, tool_names),
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO agents (agent_id, name, version, description, tool_names)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (agent_id, name, version, description, tool_names),
+            )
+
+        conn.execute(
+            "INSERT INTO audit_logs (agent_id, action, rationale) VALUES (?, ?, ?)",
+            (
+                agent_id,
+                "AGENT_REGISTERED",
+                f"Registered agent '{name}' (v{version}) via register-agent CLI. "
+                f"force={force}. tools={tool_names!r}",
+            ),
+        )
+        conn.commit()
+
+    # Write persona profile (Airlock enforced)
+    if profile_content is not None:
+        profile_path = os.path.join(str(WORKSPACE_ROOT), f"{agent_id}.md")
+        valid_profile = validate_path(profile_path)
+        with open(valid_profile, "w", encoding="utf-8") as f:
+            f.write(profile_content)
+        logger.info("register_agent: wrote profile to %s", valid_profile)
+
+    logger.info("register_agent: registered '%s' (v%s)", agent_id, version)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Librarian Control Script CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -287,6 +376,25 @@ if __name__ == "__main__":
     ingest_parser.add_argument(
         "--sensitive", action="store_true",
         help="Use local Ollama distillation (default: Gemini)"
+    )
+
+    register_parser = subparsers.add_parser(
+        "register-agent",
+        help="Register a new agent in factory.db",
+    )
+    register_parser.add_argument("db_path",  type=str, help="Path to the SQLite database")
+    register_parser.add_argument("agent_id", type=str, help="Unique agent ID (kebab-case, e.g. my-analyst-01)")
+    register_parser.add_argument("name",     type=str, help="Human-readable agent name")
+    register_parser.add_argument("--version",      default="1.0", help="Agent version (default: 1.0)")
+    register_parser.add_argument("--description",  default="",   help="Short description of the agent's role")
+    register_parser.add_argument("--tool-names",   default="",   help="Comma-separated list of tool names")
+    register_parser.add_argument(
+        "--profile-file", default=None,
+        help="Path to a .md file whose content becomes the agent's persona profile"
+    )
+    register_parser.add_argument(
+        "--force", action="store_true",
+        help="Overwrite existing agent with the same ID"
     )
     
     args = parser.parse_args()
@@ -316,6 +424,30 @@ if __name__ == "__main__":
             except ValueError as e:
                 print(f"Validation error: {e}", file=sys.stderr)
                 sys.exit(1)
+        elif args.command == "register-agent":
+            profile_content = None
+            if args.profile_file:
+                with open(args.profile_file, "r", encoding="utf-8") as pf:
+                    profile_content = pf.read()
+            try:
+                register_agent(
+                    db_path=args.db_path,
+                    agent_id=args.agent_id,
+                    name=args.name,
+                    version=args.version,
+                    description=args.description,
+                    tool_names=args.tool_names,
+                    profile_content=profile_content,
+                    force=args.force,
+                )
+                print(
+                    f"Agent '{args.agent_id}' registered successfully.\n"
+                    f"Run refresh-registry to update REGISTRY.md."
+                )
+            except ValueError as e:
+                print(f"Error: {e}", file=sys.stderr)
+                sys.exit(1)
     except Exception as e:
         print(f"Error executing command '{args.command}': {e}", file=sys.stderr)
         sys.exit(1)
+

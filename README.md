@@ -1,5 +1,7 @@
 # OpenClaw for Linux
 
+![Tests](https://github.com/asoshnin/OpenClaw4LinuxRAMonly/actions/workflows/test.yml/badge.svg)
+
 > **Self-hosted AI agents that never act without your explicit approval —  
 > local-first, CPU-bound, zero cloud dependency for sensitive operations.**
 
@@ -47,6 +49,23 @@ For the full technical reference, see [`docs/2026-03-27__12-50_current_state.md`
 
 ---
 
+## Glossary
+
+| Term | Plain English |
+|---|---|
+| **Navigator** | You — the human operator who owns all decisions |
+| **Agent** | A named AI persona with a specific role, stored in the database |
+| **Airlock** | A security check preventing agents from writing outside the workspace folder |
+| **HITL Gate** | A native OS dialog that blocks execution until you click Yes or No |
+| **Burn-on-Read Token** | A one-time code that self-destructs upon use, preventing replay attacks |
+| **Faint Path** | A semantically similar memory retrieved from past sessions for context |
+| **The Librarian** | The agent managing files, database, and memory (`lib-keeper-01`) |
+| **Epistemic Sovereignty** | The principle that you stay in full control of what the AI knows and does |
+
+📖 Full definitions with examples: [docs/glossary.md](docs/glossary.md)
+
+---
+
 ## Quick Start
 
 **Prerequisites:** Python 3.10+, [Ollama](https://ollama.ai) installed and running.
@@ -73,12 +92,17 @@ python3 openclaw_skills/architect/architect_tools.py run \
   "What agents are currently registered in the factory?"
 
 # 6. (Optional) Sync with Obsidian Vault
+#    Full setup guide: docs/linux_obsidian_setup.md
 export OBSIDIAN_API_KEY="your-local-rest-api-key"
 python3 openclaw_skills/architect/architect_tools.py write-to-vault \
   "$HOME/.openclaw/workspace/factory.db" \
   kimi-orch-01 \
   "Log entry" "Task completed successfully"
 ```
+
+> 📖 **New to OpenClaw?** Read the [Getting Started Guide](docs/getting_started.md) for a complete walkthrough — including annotated terminal output and how to understand the HITL popup.
+
+> 🔍 **Obsidian users:** Feed your personal notes to your agents via `ingest-vault-note`. See [Linux Obsidian Setup](docs/linux_obsidian_setup.md) for the full setup guide.
 
 > **Custom workspace:** Set `OPENCLAW_WORKSPACE=/your/path` before running `setup.sh` or any CLI command.
 

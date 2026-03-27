@@ -68,7 +68,15 @@ class SafetyDistillationEngine:
                 result = json.loads(response.read().decode('utf-8'))
                 return result.get("embedding", [])
         except urllib.error.URLError as e:
-            raise RuntimeError(f"Ollama API Error during embedding generation: {e}")
+            if isinstance(e.reason, ConnectionRefusedError) or "Connection refused" in str(e):
+                raise RuntimeError(
+                    "Ollama is not running. Start it first:\n"
+                    "  ollama serve\n"
+                    "Then pull the required models:\n"
+                    "  ollama pull nomic-embed-text\n"
+                    "  ollama pull nn-tsuzu/lfm2.5-1.2b-instruct"
+                ) from e
+            raise RuntimeError(f"Ollama API Error during embedding generation: {e}") from e
 
     def _call_ollama(self, prompt: str) -> str:
         """Private helper: send a prompt to local Ollama and return the raw response string."""
@@ -86,7 +94,15 @@ class SafetyDistillationEngine:
                 result = json.loads(response.read().decode("utf-8"))
                 return result.get("response", "{}")
         except urllib.error.URLError as e:
-            raise RuntimeError(f"Ollama API Error during local inference: {e}")
+            if isinstance(e.reason, ConnectionRefusedError) or "Connection refused" in str(e):
+                raise RuntimeError(
+                    "Ollama is not running. Start it first:\n"
+                    "  ollama serve\n"
+                    "Then pull the required models:\n"
+                    "  ollama pull nomic-embed-text\n"
+                    "  ollama pull nn-tsuzu/lfm2.5-1.2b-instruct"
+                ) from e
+            raise RuntimeError(f"Ollama API Error during local inference: {e}") from e
 
     def _distill_local(self, raw_log: str) -> dict:
         """[DES-12] Distills sensitive logs locally using the CPU-optimized Scrubber.

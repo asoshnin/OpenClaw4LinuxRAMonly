@@ -19,6 +19,19 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
+# Preflight: Python version check (requires 3.10+)
+# ---------------------------------------------------------------------------
+if ! python3 -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" 2>/dev/null; then
+    PYVER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "unknown")
+    echo "ERROR: Python 3.10+ is required (found: Python $PYVER)." >&2
+    echo "       On Ubuntu 20.04: sudo apt install python3.10" >&2
+    echo "       Or download from: https://www.python.org/downloads/" >&2
+    exit 1
+fi
+PYVER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+echo "  Python $PYVER ✓"
+
+# ---------------------------------------------------------------------------
 # Resolve workspace
 # ---------------------------------------------------------------------------
 WORKSPACE="${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace}"
@@ -52,24 +65,24 @@ export OPENCLAW_WORKSPACE="$WORKSPACE"
 
 # Create workspace directory if needed
 mkdir -p "$WORKSPACE"
-echo "[0/5] Workspace directory ready."
+echo "[0/7] Workspace directory ready."
 
 # ---------------------------------------------------------------------------
 # Step 1: Initialise relational DB schema (WAL mode, core tables)
 # ---------------------------------------------------------------------------
-echo "[1/5] Initialising relational DB schema..."
+echo "[1/7] Initialising relational DB schema..."
 python3 "$LIBRARIAN/librarian_ctl.py" init "$DB"
 
 # ---------------------------------------------------------------------------
 # Step 2: Bootstrap core agents and pipeline
 # ---------------------------------------------------------------------------
-echo "[2/5] Bootstrapping core agents and pipeline..."
+echo "[2/7] Bootstrapping core agents and pipeline..."
 python3 "$LIBRARIAN/librarian_ctl.py" bootstrap "$DB"
 
 # ---------------------------------------------------------------------------
 # Step 3: Initialise vector tables (sqlite-vec)
 # ---------------------------------------------------------------------------
-echo "[3/5] Initialising vector archive (sqlite-vec)..."
+echo "[3/7] Initialising vector archive (sqlite-vec)..."
 python3 - <<PYEOF
 import sys, os
 sys.path.insert(0, "$LIBRARIAN")
@@ -81,13 +94,13 @@ PYEOF
 # ---------------------------------------------------------------------------
 # Step 4: Apply schema migrations (is_system, pipeline_agents, description, tool_names)
 # ---------------------------------------------------------------------------
-echo "[4/5] Applying schema migrations..."
+echo "[4/7] Applying schema migrations..."
 python3 "$LIBRARIAN/migrate_db.py" "$DB"
 
 # ---------------------------------------------------------------------------
 # Step 5: Generate first REGISTRY.md
 # ---------------------------------------------------------------------------
-echo "[5/5] Generating REGISTRY.md..."
+echo "[5/7] Generating REGISTRY.md..."
 python3 "$LIBRARIAN/librarian_ctl.py" refresh-registry "$DB" "$REGISTRY"
 
 # ---------------------------------------------------------------------------
