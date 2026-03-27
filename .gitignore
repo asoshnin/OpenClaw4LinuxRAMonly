@@ -1,0 +1,27 @@
+# === Runtime State (NEVER COMMIT) ===
+workspace/
+database/*.db
+database/*.db-wal
+database/*.db-shm
+
+# === Security ===
+.env
+.hitl_token
+*.token
+
+# === Python ===
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# === Local Backups ===
+_Development/OpenClaw/Backup/
+
+# === Editor & OS ===
+.DS_Store
+*.swp
+*.swo
