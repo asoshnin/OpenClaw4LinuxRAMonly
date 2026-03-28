@@ -394,14 +394,15 @@ def run_agent(db_path: str, agent_id: str, task_text: str, vault_qa_result: dict
     prompt_parts.append(f"[TASK]\n{task_text}")
     prompt = "\n".join(prompt_parts)
 
-    # Step 5 (was 4): Call Ollama — tiered: GPU server → local → INFERENCE_ALERT halt
-    active_url = get_active_ollama_url()
-    if active_url is None:
+    # Step 5: Call Ollama — tiered: GPU server → local → INFERENCE_ALERT halt
+    probe = get_active_ollama_url()
+    if probe is None:
         logger.warning("run_agent: both Ollama servers offline — returning INFERENCE_ALERT.")
         return INFERENCE_ALERT
+    active_url, active_model = probe
 
     payload = json.dumps({
-        "model": LOCAL_MODEL,
+        "model": active_model,
         "prompt": prompt,
         "stream": False,
     }).encode("utf-8")
@@ -416,8 +417,8 @@ def run_agent(db_path: str, agent_id: str, task_text: str, vault_qa_result: dict
             response = result.get("response", "").strip()
             if not response:
                 raise RuntimeError(
-                    f"Ollama returned an empty response for model '{LOCAL_MODEL}'. "
-                    "Ensure the model is pulled: ollama pull " + LOCAL_MODEL
+                    f"Ollama returned an empty response for model '{active_model}'. "
+                    "Ensure the model is pulled: ollama pull " + active_model
                 )
     except urllib.error.URLError as e:
         raise RuntimeError(

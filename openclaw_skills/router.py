@@ -67,16 +67,19 @@ def _log_routing_action(db_path: str, action: str, rationale: str) -> None:
         logger.warning("Router audit write failed (non-fatal): %s", e)
 
 
-def _ping_ollama() -> tuple[bool, str | None]:
-    """Probe tiered Ollama servers. Returns (True, active_url) or (False, None)."""
-    url = get_active_ollama_url()
-    return (url is not None, url)
+def _ping_ollama() -> tuple[bool, str | None, str | None]:
+    """Probe tiered Ollama servers. Returns (True, url, model) or (False, None, None)."""
+    result = get_active_ollama_url()
+    if result is None:
+        return False, None, None
+    url, model = result
+    return True, url, model
 
 
-def _call_local(task_text: str, active_url: str) -> str:
-    """Call the Ollama model at `active_url` directly (raw generation, no distillation)."""
+def _call_local(task_text: str, active_url: str, active_model: str) -> str:
+    """Call the Ollama model at `active_url` with `active_model`."""
     payload = json.dumps({
-        "model":  LOCAL_MODEL,
+        "model":  active_model,
         "prompt": task_text,
         "stream": False,
     }).encode("utf-8")
@@ -91,7 +94,7 @@ def _call_local(task_text: str, active_url: str) -> str:
             response = result.get("response", "").strip()
             if not response:
                 raise RuntimeError(
-                    f"Ollama returned an empty response for model '{LOCAL_MODEL}'."
+                    f"Ollama returned an empty response for model '{active_model}'."
                 )
             return response
     except urllib.error.URLError as e:
@@ -150,7 +153,7 @@ def route_inference(
 
     # ── Local path ───────────────────────────────────────────────────────────
     if min_model_tier == "local":
-        reachable, active_url = _ping_ollama()
+        reachable, active_url, active_model = _ping_ollama()
         if not reachable:
             _log_routing_action(
                 db_path, ACTION_ROUTE_LOCAL_FAIL,
@@ -160,14 +163,13 @@ def route_inference(
                 "ROUTE_LOCAL_FAIL: both Ollama servers offline. "
                 "Returning INFERENCE_ALERT — no cloud fallback."
             )
-            # Fail-Safe: return the alert string; do NOT route to cloud automatically
             return INFERENCE_ALERT
-        response = _call_local(task_text, active_url)
+        response = _call_local(task_text, active_url, active_model)
         _log_routing_action(
             db_path, ACTION_ROUTE_LOCAL,
-            f"Local inference completed at {active_url}. preview={response[:80]!r}",
+            f"Local inference completed at {active_url} model={active_model}. preview={response[:80]!r}",
         )
-        logger.info("ROUTE_LOCAL: inference complete via %s.", active_url)
+        logger.info("ROUTE_LOCAL: inference complete via %s (model=%s).", active_url, active_model)
         return response
 
     # ── Cloud path (is_sensitive=False only, enforced above) ─────────────────

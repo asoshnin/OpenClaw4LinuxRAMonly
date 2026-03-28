@@ -24,7 +24,7 @@ def test_run_agent_happy_path(mock_urlopen, tmp_db):
     mock_urlopen.return_value = _make_ollama_mock("I am the Mega-Orchestrator.")
 
     import architect_tools as at
-    with patch("architect_tools.get_active_ollama_url", return_value="http://192.168.1.8:11434"):
+    with patch("architect_tools.get_active_ollama_url", return_value=("http://192.168.1.8:11434", "qwen3.5:9b")):
         result = at.run_agent(tmp_db, "kimi-orch-01", "What is your role?")
 
     assert result == "I am the Mega-Orchestrator."
@@ -46,7 +46,7 @@ def test_run_agent_audit_log_truncated(mock_urlopen, tmp_db):
     mock_urlopen.return_value = _make_ollama_mock(long_response)
 
     import architect_tools as at
-    with patch("architect_tools.get_active_ollama_url", return_value="http://192.168.1.8:11434"):
+    with patch("architect_tools.get_active_ollama_url", return_value=("http://192.168.1.8:11434", "qwen3.5:9b")):
         at.run_agent(tmp_db, "kimi-orch-01", "Verbose task")
 
     conn = sqlite3.connect(tmp_db)
@@ -84,7 +84,7 @@ def test_run_agent_generation_call_fails_raises(mock_urlopen, tmp_db):
     mock_urlopen.side_effect = urllib.error.URLError("Connection dropped")
 
     import architect_tools as at
-    with patch("architect_tools.get_active_ollama_url", return_value="http://192.168.1.8:11434"):
+    with patch("architect_tools.get_active_ollama_url", return_value=("http://192.168.1.8:11434", "qwen3.5:9b")):
         with pytest.raises(RuntimeError, match="Ollama unreachable"):
             at.run_agent(tmp_db, "kimi-orch-01", "Any task")
 
@@ -95,7 +95,7 @@ def test_run_agent_empty_response_raises(mock_urlopen, tmp_db):
     mock_urlopen.return_value = _make_ollama_mock("")  # empty response
 
     import architect_tools as at
-    with patch("architect_tools.get_active_ollama_url", return_value="http://192.168.1.8:11434"):
+    with patch("architect_tools.get_active_ollama_url", return_value=("http://192.168.1.8:11434", "qwen3.5:9b")):
         with pytest.raises(RuntimeError, match="empty response"):
             at.run_agent(tmp_db, "kimi-orch-01", "Any task")
 
@@ -106,7 +106,7 @@ def test_run_agent_no_hitl_interaction(mock_urlopen, tmp_db):
     mock_urlopen.return_value = _make_ollama_mock("response")
 
     import architect_tools as at
-    with patch("architect_tools.get_active_ollama_url", return_value="http://192.168.1.8:11434"), \
+    with patch("architect_tools.get_active_ollama_url", return_value=("http://192.168.1.8:11434", "qwen3.5:9b")), \
          patch.object(at, "deploy_pipeline_with_ui") as mock_deploy, \
          patch.object(at, "generate_token") as mock_token:
         at.run_agent(tmp_db, "kimi-orch-01", "Task")

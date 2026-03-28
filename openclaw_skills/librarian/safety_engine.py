@@ -80,17 +80,22 @@ class SafetyDistillationEngine:
         Raises:
             RuntimeError: If no Ollama server is reachable (fail-safe — no cloud
                           fallback on distillation, which always carries sensitive data).
+
+        Note on embeddings:
+            nomic-embed-text is expected only on the local Ollama (OLLAMA_LOCAL_URL).
+            self.embed_url is always pinned to the local server for this reason.
+            self.ollama_url (generation) uses the active tiered server.
         """
         if ollama_url is not None:
             # Explicit override — used in tests / backwards-compat callers
             self.ollama_url = ollama_url
+            self.local_model = "nn-tsuzu/lfm2.5-1.2b-instruct"   # default for override path
         else:
             active = get_active_ollama_url()
             if active is None:
                 raise RuntimeError(INFERENCE_ALERT)
-            self.ollama_url = active
+            self.ollama_url, self.local_model = active   # model comes from tiered resolver
 
-        self.local_model = "nn-tsuzu/lfm2.5-1.2b-instruct"
         self.cloud_model = "gemini-3.1-flash-lite-preview"
         self.embed_model = "nomic-embed-text"
 
