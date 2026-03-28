@@ -129,7 +129,15 @@ If you use [Obsidian](https://obsidian.md) as your personal knowledge base, you 
 
 ---
 
-## 9. Common Problems
+## 9. Mobile Access: Telegram Interface (BETA)
+
+You can interact with your Agentic Factory on the go using the **Telegram Interface**. This "Thin Client" connects your mobile device to your local OpenClaw runtime, allowing you to run tasks and review agent outputs from anywhere.
+
+→ See the [Telegram Interface Guide](telegram_interface.md) for details on commands and security.
+
+---
+
+## 10. Common Problems
 
 ### "Ollama is not running"
 ```

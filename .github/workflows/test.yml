@@ -30,3 +30,5 @@ jobs:
           OPENCLAW_WORKSPACE: /tmp/openclaw-test-workspace
           # Obsidian key required at module import; tests mock it via conftest.py
           OBSIDIAN_API_KEY: test-ci-key
+          # Vault root required by Sprint 9 vault tools (discover_domains, health-check)
+          OBSIDIAN_VAULT_PATH: /tmp/openclaw-test-vault

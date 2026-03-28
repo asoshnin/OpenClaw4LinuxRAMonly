@@ -92,17 +92,23 @@ python3 openclaw_skills/architect/architect_tools.py run \
   "What agents are currently registered in the factory?"
 
 # 6. (Optional) Sync with Obsidian Vault
+#    Set OBSIDIAN_VAULT_PATH to your vault root for routing and health-check tools
 #    Full setup guide: docs/linux_obsidian_setup.md
 export OBSIDIAN_API_KEY="your-local-rest-api-key"
+export OBSIDIAN_VAULT_PATH="$HOME/obsidian-vault"
 python3 openclaw_skills/architect/architect_tools.py write-to-vault \
   "$HOME/.openclaw/workspace/factory.db" \
   kimi-orch-01 \
   "Log entry" "Task completed successfully"
+
+# 7. (Optional) Run a vault health scan
+python3 openclaw_skills/architect/architect_tools.py vault-health-check \
+  --vault-root "$OBSIDIAN_VAULT_PATH"
 ```
 
 > 📖 **New to OpenClaw?** Read the [Getting Started Guide](docs/getting_started.md) for a complete walkthrough — including annotated terminal output and how to understand the HITL popup.
 
-> 🔍 **Obsidian users:** Feed your personal notes to your agents via `ingest-vault-note`. See [Linux Obsidian Setup](docs/linux_obsidian_setup.md) for the full setup guide.
+> 🔍 **Obsidian users:** Feed your personal notes to your agents via `ingest-vault-note`, or scan your entire vault with `vault-health-check`. Set `OBSIDIAN_VAULT_PATH` to your vault root. See [Linux Obsidian Setup](docs/linux_obsidian_setup.md) for the full setup guide.
 
 > **Custom workspace:** Set `OPENCLAW_WORKSPACE=/your/path` before running `setup.sh` or any CLI command.
 
@@ -156,7 +162,7 @@ Agents may **propose** rule changes via `submit_kb_proposal()`. The Navigator **
 pytest tests/ -v
 ```
 
-All 94 tests run without a live Ollama or Obsidian instance (all HTTP calls are mocked). Coverage: Airlock path validation, symlink traversal attacks, sibling-prefix collision, Burn-on-Read token lifecycle, DB init round-trip, agent runner, dynamic LLM router (all 4 routing outcomes), knowledge base HITL gate, self-healing JSON circuit breaker, scoped epistemic scrubber, and Obsidian API safety invariants (Context Guard, Sensitivity Gate).
+All 156 tests run without a live Ollama or Obsidian instance (all HTTP calls are mocked). Coverage: Airlock path validation, symlink traversal attacks, sibling-prefix collision, Burn-on-Read token lifecycle, DB init round-trip, agent runner, dynamic LLM router (all 4 routing outcomes), knowledge base HITL gate, self-healing JSON circuit breaker, scoped epistemic scrubber, Obsidian API safety invariants (Context Guard, Sensitivity Gate), vault intelligent routing (dynamic domain discovery, duplicate-prefix detection), YAML schema validation, Johnny.Decimal taxonomy compliance, and autonomous vault health scan.
 
 ---
 

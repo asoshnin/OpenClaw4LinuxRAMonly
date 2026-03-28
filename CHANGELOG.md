@@ -3,6 +3,42 @@
 All notable changes are listed by Sprint. This project follows a sprint-based delivery model documented in `_Development/OpenClaw/`.
 
 ---
+## Sprint 10 (2026-03-28) — OSS Community Readiness
+
+- Updated `CHANGELOG.md`, `README.md`, `CONTRIBUTING.md` with accurate test counts (156)
+- Added Sprint 9 vault tools references and `OBSIDIAN_VAULT_PATH` documentation to `README.md` Quick Start
+- Extended `CONTRIBUTING.md` Design Constraints table with `No hardcoded DOMAIN_MAP` and `OBSIDIAN_VAULT_PATH via env var only` rules
+- Fixed `.github/workflows/test.yml`: added `OBSIDIAN_VAULT_PATH` environment variable for CI cloud runners
+- Hardened `register_agent()` in `librarian_ctl.py`:
+  - Added absolute `is_system=1` protection (PermissionError — `--force` cannot bypass)
+  - Distinct audit actions: `AGENT_REGISTERED` (new) vs `AGENT_UPDATED` (force overwrite)
+  - Migrated CLI from positional args to `--flag` arguments
+  - Exit codes: 0 = success, 1 = runtime/permission error, 2 = exists without `--force`
+- Added 10 new tests in `tests/test_register_agent.py` — **total: 156 passing**
+- Confirmed `_Development/` excluded from git tracking (`.gitignore` verified, `git ls-files` empty)
+
+---
+
+## Sprint 9 (2026-03-28) — Vault Tools Migration & ObsidianVaultArchitect
+
+- Migrated vault tools from legacy `src/tools/` to production `openclaw_skills/vault_tools/` package
+- Refactored `vault_intelligent_router.py`: replaced hardcoded `DOMAIN_MAP` with runtime `discover_domains()` that scans the live `20 - AREAS/` folder — no more out-of-sync domain maps
+  - Case-insensitive domain lookup (`"AI"`, `"ai"`, `"Ai"` all resolve identically)
+  - Duplicate Johnny.Decimal numerical prefix detection (logs warning, first-match wins)
+- Hardened `vault_schema_validator.py`: `tags` added as mandatory field; `suggested_frontmatter` repair block included in every validation response
+- Hardened `vault_taxonomy_guard.py`: `ALLOWED_SYSTEM_COMPONENTS` extended with `templates`, `dashboards`, `ai logs`
+- Added `vault_health_check.py`: autonomous read-only vault scanner
+  - Duplicate JD prefixes in `20 - AREAS/` classified as structural **errors** (not warnings)
+  - Notes in `40 - ARCHIVE/` skipped; notes over `VAULT_INGEST_MAX_BYTES` flagged as warnings
+  - `format_health_report()` renders results as Obsidian-ready Markdown with valid YAML frontmatter
+- Added 4 new `architect_tools.py` subcommands: `vault-route`, `vault-validate`, `vault-check-taxonomy`, `vault-health-check`
+- Updated `ObsidianVaultArchitect` agent to v2.0 with dual-mode description (Mode A: CLI tools, Mode B: autonomous health scan)
+- Updated `TOOLS.md` with full `vault_tools` package reference table and CLI examples
+- Updated `.env.example` and `setup.sh` to document `OBSIDIAN_VAULT_PATH` as required for vault routing and health check
+- Deleted legacy `src/tools/` directory (decommissioned)
+- Added 52 new tests — **total: 156 passing**
+
+---
 
 ## Sprint 8 (2026-03-27) — OSS Community Readiness
 

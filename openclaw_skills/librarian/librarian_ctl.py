@@ -272,26 +272,29 @@ def register_agent(
     profile_content: str = None,
     force: bool = False,
 ) -> None:
-    """Register a new agent in factory.db and optionally write its persona profile.
+    """Register a new agent or update an existing one in factory.db.
 
     Security invariants:
+      - is_system=1 agents CANNOT be modified by this function under ANY circumstance.
+        force=True does NOT bypass this protection.  Raises PermissionError.
       - profile file is written to WORKSPACE_ROOT/{agent_id}.md via validate_path() (Airlock).
       - Raises ValueError if agent_id already exists and force=False.
-      - Logs AGENT_REGISTERED to audit_logs on success.
+      - Audit action: 'AGENT_REGISTERED' (new) or 'AGENT_UPDATED' (force overwrite).
 
     Args:
-        db_path:         Path to factory.db.
+        db_path:         Path to factory.db (Airlock-validated).
         agent_id:        Unique agent identifier (kebab-case, e.g. 'my-analyst-01').
         name:            Human-readable agent name.
         version:         Agent version string (default '1.0').
         description:     Short description of the agent's role.
         tool_names:      Comma-separated list of tools the agent may invoke.
         profile_content: Optional Markdown persona text to write as a .md profile file.
-        force:           If True, overwrites an existing agent with the same agent_id.
+        force:           If True, overwrites an existing non-system agent.
 
     Raises:
         ValueError:      If agent_id or name is empty, or if agent_id already exists (force=False).
-        PermissionError: If profile path breaches the Airlock.
+        PermissionError: If the target agent is a system agent (is_system=1), or if profile
+                         path breaches the Airlock.
     """
     if not agent_id or not agent_id.strip():
         raise ValueError("agent_id must not be empty.")
@@ -301,7 +304,18 @@ def register_agent(
     valid_db = validate_path(db_path)
 
     with sqlite3.connect(valid_db) as conn:
-        # Check for existing agent
+        # ── System agent protection (ABSOLUTE — even force=True cannot bypass) ────
+        system_check = conn.execute(
+            "SELECT is_system FROM agents WHERE agent_id = ?", (agent_id,)
+        ).fetchone()
+        if system_check is not None and system_check[0] == 1:
+            raise PermissionError(
+                f"Agent '{agent_id}' is a system-protected agent (is_system=1). "
+                "System agents cannot be modified via register-agent. "
+                "The --force flag does not override system protection."
+            )
+
+        # ── Existence check ──────────────────────────────────────────────────────
         existing = conn.execute(
             "SELECT agent_id FROM agents WHERE agent_id = ?", (agent_id,)
         ).fetchone()
@@ -312,13 +326,16 @@ def register_agent(
                 "Use --force to overwrite."
             )
 
-        if force:
+        audit_action = "AGENT_UPDATED" if (existing and force) else "AGENT_REGISTERED"
+
+        if force and existing:
             conn.execute(
                 """
-                INSERT OR REPLACE INTO agents (agent_id, name, version, description, tool_names)
-                VALUES (?, ?, ?, ?, ?)
+                UPDATE agents
+                SET name = ?, version = ?, description = ?, tool_names = ?
+                WHERE agent_id = ?
                 """,
-                (agent_id, name, version, description, tool_names),
+                (name, version, description, tool_names, agent_id),
             )
         else:
             conn.execute(
@@ -333,8 +350,8 @@ def register_agent(
             "INSERT INTO audit_logs (agent_id, action, rationale) VALUES (?, ?, ?)",
             (
                 agent_id,
-                "AGENT_REGISTERED",
-                f"Registered agent '{name}' (v{version}) via register-agent CLI. "
+                audit_action,
+                f"{audit_action}: agent '{name}' (v{version}) via register-agent. "
                 f"force={force}. tools={tool_names!r}",
             ),
         )
@@ -348,7 +365,7 @@ def register_agent(
             f.write(profile_content)
         logger.info("register_agent: wrote profile to %s", valid_profile)
 
-    logger.info("register_agent: registered '%s' (v%s)", agent_id, version)
+    logger.info("register_agent: %s '%s' (v%s)", audit_action, agent_id, version)
 
 
 if __name__ == "__main__":
@@ -380,25 +397,25 @@ if __name__ == "__main__":
 
     register_parser = subparsers.add_parser(
         "register-agent",
-        help="Register a new agent in factory.db",
+        help="Register a new agent (or update with --force) in factory.db",
     )
-    register_parser.add_argument("db_path",  type=str, help="Path to the SQLite database")
-    register_parser.add_argument("agent_id", type=str, help="Unique agent ID (kebab-case, e.g. my-analyst-01)")
-    register_parser.add_argument("name",     type=str, help="Human-readable agent name")
-    register_parser.add_argument("--version",      default="1.0", help="Agent version (default: 1.0)")
-    register_parser.add_argument("--description",  default="",   help="Short description of the agent's role")
-    register_parser.add_argument("--tool-names",   default="",   help="Comma-separated list of tool names")
+    register_parser.add_argument("--db-path",     dest="db_path",     required=True, help="Path to factory.db")
+    register_parser.add_argument("--agent-id",    dest="agent_id",    required=True, help="Unique agent ID (kebab-case)")
+    register_parser.add_argument("--name",         dest="name",        required=True, help="Human-readable agent name")
+    register_parser.add_argument("--version",      dest="version",     default="1.0", help="Agent version (default: 1.0)")
+    register_parser.add_argument("--description",  dest="description",  default="",   help="Short description of the agent's role")
+    register_parser.add_argument("--tool-names",   dest="tool_names",   default="",   help="Comma-separated list of tool names")
     register_parser.add_argument(
-        "--profile-file", default=None,
+        "--profile-file", dest="profile_file", default=None,
         help="Path to a .md file whose content becomes the agent's persona profile"
     )
     register_parser.add_argument(
         "--force", action="store_true",
-        help="Overwrite existing agent with the same ID"
+        help="Overwrite existing non-system agent with the same ID (exit 2 if exists without --force)"
     )
-    
+
     args = parser.parse_args()
-    
+
     try:
         if args.command == "init":
             init_db(args.db_path)
@@ -440,13 +457,19 @@ if __name__ == "__main__":
                     profile_content=profile_content,
                     force=args.force,
                 )
+                action = "Updated" if args.force else "Registered"
                 print(
-                    f"Agent '{args.agent_id}' registered successfully.\n"
-                    f"Run refresh-registry to update REGISTRY.md."
+                    f"{action} agent '{args.agent_id}' successfully. "
+                    "Run refresh-registry to update REGISTRY.md."
                 )
-            except ValueError as e:
+            except PermissionError as e:
                 print(f"Error: {e}", file=sys.stderr)
                 sys.exit(1)
+            except ValueError as e:
+                print(f"Error: {e}", file=sys.stderr)
+                sys.exit(2)  # exit 2 = agent exists without --force
+    except SystemExit:
+        raise  # propagate sys.exit() calls cleanly
     except Exception as e:
         print(f"Error executing command '{args.command}': {e}", file=sys.stderr)
         sys.exit(1)

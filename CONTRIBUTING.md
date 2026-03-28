@@ -13,7 +13,7 @@ pip install -r requirements.txt
 pytest tests/ -v
 ```
 
-All 94+ tests run without a live Ollama or Obsidian instance — all HTTP calls are mocked. A clean run with only Python and pip is required.
+All 156+ tests run without a live Ollama or Obsidian instance — all HTTP calls are mocked. A clean run with only Python and pip is required.
 
 ---
 
@@ -29,6 +29,8 @@ These constraints are architectural decisions, not style preferences. Please do 
 | **No new external dependencies** | Allowed deps: `sqlite-vec`, `pyyaml`, `google-generativeai`, `tkinter` (stdlib), `pytest`. Any new dep requires explicit discussion first. |
 | **No hardcoded paths** | All file operations must use `validate_path()` via the Airlock. Never use `open()` without a prior path validation. |
 | **No silent exception swallowing** | Use explicit `try/except` with logged errors. `except Exception: pass` is never acceptable. |
+| **No hardcoded `DOMAIN_MAP`** | Vault domain routing uses `discover_domains()` to scan the live filesystem. Static maps go stale. |
+| **`OBSIDIAN_VAULT_PATH` via env var only** | The vault lives outside `OPENCLAW_WORKSPACE`. Supply via environment variable — never hardcode. |
 
 ---
 
