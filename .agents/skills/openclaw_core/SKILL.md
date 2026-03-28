@@ -31,8 +31,8 @@ OpenClaw is a hardened, self-evolving agentic operating system built for Linux x
 3. **Burn-on-Read Token**: Handled by the UI wrapper; token is deleted before comparison.
 4. **Context Guard**: Logs passed to any LLM call must be truncated to 12,000 characters maximum before the call.
 5. **Epistemic Scrubber**: All *externally-ingested* data entering the Vector Archive must pass through `safety_engine.py`. Internal audit logs may be embedded directly.
-6. **System Agent Protection**: Agents with `is_system=1` in `factory.db` are immutable.
-7. **Secrets**: Use env vars (e.g., `GEMINI_API_KEY`, `OPENCLAW_WORKSPACE`, `OBSIDIAN_API_KEY`, `OBSIDIAN_BASE_URL`). Never hardcode paths or keys.
+6. **System Agent Protection**: Agents with `is_system=1` in `factory.db` are immutable. The `register_agent()` function enforces this absolutely — `--force` does not override `is_system=1`.
+7. **Secrets**: Use env vars (e.g., `GEMINI_API_KEY`, `OPENCLAW_WORKSPACE`, `OBSIDIAN_API_KEY`, `OBSIDIAN_BASE_URL`, `OBSIDIAN_VAULT_PATH`). Never hardcode paths or keys.
 
 # Agent Runner Constraints (Sprint 5+)
 
@@ -103,6 +103,22 @@ OpenClaw is a hardened, self-evolving agentic operating system built for Linux x
 12. **Audit trail for ingest failures.** If `archive_log()` raises during `ingest_vault_note`, log `action='VAULT_INGEST_FAILED'` to `audit_logs` before re-raising.
 13. **Path validation in `write_note`.** Both checks are required: `os.path.normpath(vault_path).startswith("..")` AND `os.path.isabs(os.path.normpath(vault_path))`. Neither alone is sufficient.
 
+# Vault Tools Policy (Sprint 9+)
+
+`openclaw_skills/vault_tools/` is the production vault tools package. **Never use the deleted `src/tools/` path.**
+
+**Key modules:**
+- `vault_intelligent_router.py` — `discover_domains(vault_root)` scans `20 - AREAS/` at runtime. **No hardcoded `DOMAIN_MAP`.** `suggest_vault_path(metadata, filename, vault_root)` does case-insensitive slug matching with INBOX fallback.
+- `vault_schema_validator.py` — `validate_vault_metadata(content, expected_path)` validates YAML frontmatter. Mandatory fields: `id`, `type`, `summary`, `tags`, `domain`. Always returns `suggested_frontmatter` repair block.
+- `vault_taxonomy_guard.py` — `validate_taxonomy_compliance(vault_path)` enforces `NN - ` prefix on all path components. System folders (`.obsidian`, `templates`, `dashboards`, `ai logs`, `.git`, `openclaw`) are exempt via ancestor-path short-circuit.
+- `vault_health_check.py` — `run_vault_health_check(vault_root, db_path)` is **read-only**. Duplicate JD numerical prefixes in `20 - AREAS/` = **ERROR** (not warning). Notes in `40 - ARCHIVE/` are skipped. `format_health_report()` produces Obsidian-ready Markdown.
+
+**Airlock exception:** `vault_root` (the Obsidian vault) is NOT subject to `validate_path()`. It lives outside `OPENCLAW_WORKSPACE` by design. It is sourced from `OBSIDIAN_VAULT_PATH` env var only — never passed through Airlock.
+
+**`architect_tools.py` subcommands (Sprint 9):** `vault-route`, `vault-validate`, `vault-check-taxonomy`, `vault-health-check`. All follow exit codes 0=success, 1=error, 2=validation failure.
+
+**`VAULT_TOOLS_AVAILABLE` guard:** vault_tools is imported with a graceful try/except in `architect_tools.py`. All four command handlers check `VAULT_TOOLS_AVAILABLE` before executing.
+
 # Technology Stack
 
 - **Runtime**: Python 3.10+ (Synchronous execution only), SQLite (WAL), `sqlite-vec` (768-dim embeddings).
@@ -112,18 +128,21 @@ OpenClaw is a hardened, self-evolving agentic operating system built for Linux x
 
 # Project Structure & Patterns
 
-- `.agents/` — AI agent steering and workflow configs.
+- `.agents/` — AI agent steering and workflow configs (this file, workflows/).
 - `openclaw_skills/config.py` — **Central config module. Import here, never hardcode.**
 - `openclaw_skills/router.py` — Dynamic LLM Router with HITL-guarded routing policy. *(Sprint 6)*
 - `openclaw_skills/kb.py` — Static KB loader, prompt formatter, and HITL-supervised reflection queue. *(Sprint 6)*
 - `openclaw_skills/knowledge_base.json` — Committed static rules file. Never vectorize, never auto-modify. *(Sprint 6)*
 - `openclaw_skills/obsidian_bridge.py` — Obsidian Local REST API client. localhost-only. See Obsidian Bridge Policy. *(Sprint 7)*
 - `openclaw_skills/obsidian_vault_bootstrap.py` — Idempotent Johnny.Decimal folder creation for new vault setup. *(Sprint 7)*
+- `openclaw_skills/vault_tools/` — Production vault tools package: router, schema validator, taxonomy guard, health check. See Vault Tools Policy. *(Sprint 9)*
 - `openclaw_skills/librarian/` — DB management, registry, vector archive, safety engine, self-healing parser.
 - `openclaw_skills/librarian/self_healing.py` — Circuit-breaking JSON parser. Max 3 retries then raise. *(Sprint 6)*
-- `openclaw_skills/architect/` — Discovery, HITL, deploy, teardown, agent runner.
-- `tests/` — pytest suite. Fixtures use temp dirs. No test touches real `WORKSPACE_ROOT`.
-- `docs/YYYY-MM-DD__HH-MM_*.md` — timestamped snapshots.
-- `_Development/OpenClaw/` — Sprint tracking and backlog.
-- **CLI Patterns**: `argparse` subcommands. DB path is always a positional argument, never hardcoded.
+- `openclaw_skills/architect/` — Discovery, HITL, deploy, teardown, agent runner, vault tool subcommands.
+- `tests/` — pytest suite. 156 tests. Fixtures use temp dirs. No test touches real `WORKSPACE_ROOT`.
+- `docs/` — User-facing documentation (getting_started, architecture, glossary, how_to_create_agent, linux_obsidian_setup, telegram_interface).
+- `_Development/OpenClaw/` — Sprint tracking and backlog. **Not tracked in git** (`.gitignore` exclusion verified).
+- **CLI Patterns**: `argparse` subcommands. DB path is a positional argument for legacy commands (`init`, `bootstrap`, `refresh-registry`, `ingest-vault-note`). Sprint 9+ vault tool subcommands and `register-agent` use `--flag` arguments. Exit codes: 0=success, 1=runtime error, 2=validation/existence failure.
 - **Setup**: `setup.sh` at project root. Respects `OPENCLAW_WORKSPACE` and `OBSIDIAN_VAULT_PATH`. Idempotent.
+- **Git**: `origin` remote = `https://github.com/asoshnin/OpenClaw4LinuxRAMonly.git` (the Linux OpenClaw public repo). `mac-factory` remote = separate Mac prototype repo — not the canonical codebase.
+- **CI**: `.github/workflows/test.yml` runs pytest on Python 3.10/3.11/3.12. Required env vars: `OPENCLAW_WORKSPACE`, `OBSIDIAN_API_KEY`, `OBSIDIAN_VAULT_PATH`.
