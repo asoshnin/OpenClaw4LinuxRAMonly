@@ -139,12 +139,11 @@ You can interact with your Agentic Factory on the go using the **Telegram Interf
 
 ## 10. Common Problems
 
-### "Ollama is not running"
+### "INFERENCE_ALERT: Both Local and GPU Ollama servers are offline"
 ```
-RuntimeError: Ollama is not running. Start it first:
-  ollama serve
+INFERENCE_ALERT: Both Local and GPU Ollama servers are offline. Permission required to use Cloud LLM (Gemini) for this task. Reply with 'Approve Cloud' to proceed.
 ```
-**Fix:** Run `ollama serve` in a terminal and keep it running. Then pull models: `ollama pull nomic-embed-text`.
+**Fix:** Start Ollama on your remote GPU server or your local Linux machine. Then ensure the required models are pulled (e.g., `ollama pull qwen3.5:9b`, `ollama pull nomic-embed-text`).
 
 ### "GEMINI_API_KEY environment variable not set"
 ```

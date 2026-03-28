@@ -39,7 +39,7 @@ Navigator (You)
 | `obsidian_bridge.py` | `openclaw_skills/` | Obsidian Local REST API client (loopback-only) |
 | `vector_archive.py` | `openclaw_skills/librarian/` | sqlite-vec table init + `find_faint_paths()` KNN search |
 | `self_healing.py` | `openclaw_skills/librarian/` | Circuit-breaking JSON parser (3 retries → RuntimeError) |
-| `config.py` | `openclaw_skills/` | `WORKSPACE_ROOT`, `OLLAMA_URL`, `LOCAL_MODEL` constants |
+| `config.py` | `openclaw_skills/` | `WORKSPACE_ROOT` + explicit Tiered Inference router configuration |
 
 ## Security Invariants
 
@@ -65,6 +65,9 @@ pytest tests/ -v   # Run all 94 tests
 |---|---|---|---|
 | `OPENCLAW_WORKSPACE` | No | `~/.openclaw/workspace` | Workspace root (factory.db, REGISTRY.md, profiles) |
 | `GEMINI_API_KEY` | For cloud paths | — | Gemini API key (non-sensitive distillation only) |
+| `OLLAMA_REMOTE_URL` | No | `http://192.168.1.8:11434` | Primary inference GPU server endpoint |
+| `OLLAMA_LOCAL_URL` | No | `http://127.0.0.1:11434` | Secondary/fallback local inference endpoint |
+| `REMOTE_LOCAL_MODEL` | No | `qwen3.5:9b` | Model to utilize on the remote GPU server |
 | `OBSIDIAN_API_KEY` | For vault sync | — | Local REST API plugin bearer token |
 | `OBSIDIAN_BASE_URL` | No | `http://127.0.0.1:27123` | Must resolve to loopback — enforced at construction |
 | `OBSIDIAN_VAULT_PATH` | For bootstrap | — | Absolute path to vault root |

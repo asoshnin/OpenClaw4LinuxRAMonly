@@ -79,6 +79,9 @@ cd OpenClaw4LinuxRAMonly
 pip install -r requirements.txt
 
 # 3. Pull required Ollama models
+# On your GPU server (default 192.168.1.8:11434):
+ollama pull qwen3.5:9b
+# On your local Linux machine (default 127.0.0.1:11434):
 ollama pull nomic-embed-text
 ollama pull nn-tsuzu/lfm2.5-1.2b-instruct
 
@@ -146,7 +149,7 @@ Every inference call passes through `router.py`:
 route_inference(task_text, is_sensitive=True, min_model_tier="local", db_path=...)
 ```
 - `is_sensitive=True` + `min_model_tier="cloud"` → raises `PermissionError("[SYS-HALT: HITL REQUIRED]")` — cloud API never called.
-- Ollama unavailable + `min_model_tier="local"` → `RuntimeError` — no silent fallback to cloud.
+- Both Ollama servers unavailable + `min_model_tier="local"` → Returns `INFERENCE_ALERT` to the Navigator (requires explicit `"Approve Cloud"` reply) — no silent fallback to cloud.
 - Every routing decision (ROUTE_LOCAL, ROUTE_CLOUD, ROUTE_LOCAL_FAIL, ROUTING_HALT) is written to `audit_logs`.
 
 ### Static Knowledge Base & Reflection Queue
@@ -182,7 +185,7 @@ All 179 tests run without a live Ollama or Obsidian instance (all HTTP calls are
 
 ## Hardware Target
 
-ThinkPad W540 (x86_64, Linux). All inference runs locally via Ollama — no GPU required. Cloud (Gemini API) is used **only** for non-sensitive log distillation and is always opt-in via the `is_sensitive` flag. The `router.py` enforces this at the code level — sensitive data cannot reach the cloud even if a caller requests it.
+ThinkPad W540 (x86_64, Linux) with a high-performance remote GPU server fallback. Inference logic uses a tiered router (probes GPU server first, then local Linux). Cloud (Gemini API) is used **only** for non-sensitive log distillation and is always opt-in via the `is_sensitive` flag. The `router.py` enforces this at the code level — sensitive data cannot reach the cloud even if a caller requests it.
 
 ---
 

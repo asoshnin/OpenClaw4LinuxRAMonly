@@ -71,9 +71,9 @@ python3 openclaw_skills/architect/architect_tools.py run \
 
 | `is_sensitive` | `tier` | Outcome |
 |---|---|---|
-| `True` | `local` | `ROUTE_LOCAL` — Ollama |
+| `True` | `local` | `ROUTE_LOCAL` — Tiered Ollama (returns `INFERENCE_ALERT` if offline) |
 | `True` | `cloud` | `ROUTING_HALT` — `PermissionError` raised; cloud never called |
-| `False` | `local` | `ROUTE_LOCAL` — Ollama (if reachable) |
+| `False` | `local` | `ROUTE_LOCAL` — Tiered Ollama (returns `INFERENCE_ALERT` if offline) |
 | `False` | `cloud` | `ROUTE_CLOUD` — Gemini |
 
 ---
