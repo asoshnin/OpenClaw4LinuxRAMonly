@@ -24,10 +24,10 @@ except ImportError:
 
 # Resolve workspace config — never hardcode paths
 try:
-    from config import WORKSPACE_ROOT, TOKEN_FILE, OLLAMA_URL, LOCAL_MODEL
+    from config import WORKSPACE_ROOT, TOKEN_FILE, OLLAMA_URL, LOCAL_MODEL, get_active_ollama_url, INFERENCE_ALERT
 except ImportError:
     sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-    from config import WORKSPACE_ROOT, TOKEN_FILE, OLLAMA_URL, LOCAL_MODEL
+    from config import WORKSPACE_ROOT, TOKEN_FILE, OLLAMA_URL, LOCAL_MODEL, get_active_ollama_url, INFERENCE_ALERT
 
 # ObsidianBridge — optional dependency (Sprint 7); graceful if not yet installed
 try:
@@ -308,6 +308,16 @@ def run_agent(db_path: str, agent_id: str, task_text: str, vault_qa_result: dict
             f"Run 'librarian_ctl.py bootstrap' to seed core agents."
         )
 
+    # Load persona from profile file if it exists
+    persona_text = ""
+    profile_path = os.path.join(str(WORKSPACE_ROOT), f"{agent_id}.md")
+    if os.path.exists(profile_path):
+        try:
+            with open(profile_path, "r", encoding="utf-8") as f:
+                persona_text = f.read()
+        except Exception as e:
+            logger.warning("Could not read profile file %s: %s", profile_path, e)
+
     # 3. Retrieve memory context (graceful — empty archive is normal on fresh install)
     memory_text = "No prior memory available."
     try:
@@ -329,11 +339,13 @@ def run_agent(db_path: str, agent_id: str, task_text: str, vault_qa_result: dict
 
     # 4. Build prompt — SKILL.md Sprint 11 order: KB → identity → memory → vault context → task
     description = agent.get("description") or agent.get("name", "AI agent")
+    prompt_identity = persona_text if persona_text else f"You are {agent['name']} — {description}."
+    
     memory_text = memory_text[:4000]   # context window guard
     prompt_parts = []
     if kb_prefix:
         prompt_parts.append(kb_prefix)
-    prompt_parts.append(f"[AGENT IDENTITY]\nYou are {agent['name']} — {description}.\n")
+    prompt_parts.append(f"[AGENT IDENTITY]\n{prompt_identity}\n")
     prompt_parts.append(f"[MEMORY CONTEXT]\n{memory_text}\n")
 
     # [VAULT CONTEXT] — Sprint 11.1: Vault QA Response Protocol
@@ -382,19 +394,24 @@ def run_agent(db_path: str, agent_id: str, task_text: str, vault_qa_result: dict
     prompt_parts.append(f"[TASK]\n{task_text}")
     prompt = "\n".join(prompt_parts)
 
-    # 4. Call local Ollama (synchronous, no cloud)
+    # Step 5 (was 4): Call Ollama — tiered: GPU server → local → INFERENCE_ALERT halt
+    active_url = get_active_ollama_url()
+    if active_url is None:
+        logger.warning("run_agent: both Ollama servers offline — returning INFERENCE_ALERT.")
+        return INFERENCE_ALERT
+
     payload = json.dumps({
         "model": LOCAL_MODEL,
         "prompt": prompt,
         "stream": False,
     }).encode("utf-8")
     req = urllib.request.Request(
-        f"{OLLAMA_URL}/api/generate",
+        f"{active_url}/api/generate",
         data=payload,
         headers={"Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=60.0) as resp:
+        with urllib.request.urlopen(req, timeout=600.0) as resp:
             result = json.loads(resp.read().decode("utf-8"))
             response = result.get("response", "").strip()
             if not response:
@@ -404,7 +421,7 @@ def run_agent(db_path: str, agent_id: str, task_text: str, vault_qa_result: dict
                 )
     except urllib.error.URLError as e:
         raise RuntimeError(
-            f"Ollama unreachable at {OLLAMA_URL}: {e}. "
+            f"Ollama unreachable at {active_url}: {e}. "
             "Ensure Ollama is running: ollama serve"
         ) from e
 

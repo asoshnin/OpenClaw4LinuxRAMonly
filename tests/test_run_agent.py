@@ -24,7 +24,8 @@ def test_run_agent_happy_path(mock_urlopen, tmp_db):
     mock_urlopen.return_value = _make_ollama_mock("I am the Mega-Orchestrator.")
 
     import architect_tools as at
-    result = at.run_agent(tmp_db, "kimi-orch-01", "What is your role?")
+    with patch("architect_tools.get_active_ollama_url", return_value="http://192.168.1.8:11434"):
+        result = at.run_agent(tmp_db, "kimi-orch-01", "What is your role?")
 
     assert result == "I am the Mega-Orchestrator."
 
@@ -45,7 +46,8 @@ def test_run_agent_audit_log_truncated(mock_urlopen, tmp_db):
     mock_urlopen.return_value = _make_ollama_mock(long_response)
 
     import architect_tools as at
-    at.run_agent(tmp_db, "kimi-orch-01", "Verbose task")
+    with patch("architect_tools.get_active_ollama_url", return_value="http://192.168.1.8:11434"):
+        at.run_agent(tmp_db, "kimi-orch-01", "Verbose task")
 
     conn = sqlite3.connect(tmp_db)
     rationale = conn.execute(
@@ -62,15 +64,29 @@ def test_run_agent_unknown_agent_raises(tmp_db):
         at.run_agent(tmp_db, "nonexistent-agent-99", "Any task")
 
 
+def test_run_agent_both_servers_offline_returns_alert(tmp_db):
+    """When get_active_ollama_url returns None, run_agent returns INFERENCE_ALERT string.
+
+    Fail-Safe: must never raise, never call cloud automatically.
+    """
+    import architect_tools as at
+    with patch("architect_tools.get_active_ollama_url", return_value=None):
+        result = at.run_agent(tmp_db, "kimi-orch-01", "Any task")
+
+    assert "INFERENCE_ALERT" in result
+    assert "Approve Cloud" in result
+
+
 @patch("urllib.request.urlopen")
-def test_run_agent_ollama_unreachable_raises(mock_urlopen, tmp_db):
-    """run_agent raises RuntimeError when Ollama is unreachable."""
+def test_run_agent_generation_call_fails_raises(mock_urlopen, tmp_db):
+    """Probe succeeds but the /api/generate call raises URLError → RuntimeError."""
     import urllib.error
-    mock_urlopen.side_effect = urllib.error.URLError("Connection refused")
+    mock_urlopen.side_effect = urllib.error.URLError("Connection dropped")
 
     import architect_tools as at
-    with pytest.raises(RuntimeError, match="Ollama unreachable"):
-        at.run_agent(tmp_db, "kimi-orch-01", "Any task")
+    with patch("architect_tools.get_active_ollama_url", return_value="http://192.168.1.8:11434"):
+        with pytest.raises(RuntimeError, match="Ollama unreachable"):
+            at.run_agent(tmp_db, "kimi-orch-01", "Any task")
 
 
 @patch("urllib.request.urlopen")
@@ -79,8 +95,9 @@ def test_run_agent_empty_response_raises(mock_urlopen, tmp_db):
     mock_urlopen.return_value = _make_ollama_mock("")  # empty response
 
     import architect_tools as at
-    with pytest.raises(RuntimeError, match="empty response"):
-        at.run_agent(tmp_db, "kimi-orch-01", "Any task")
+    with patch("architect_tools.get_active_ollama_url", return_value="http://192.168.1.8:11434"):
+        with pytest.raises(RuntimeError, match="empty response"):
+            at.run_agent(tmp_db, "kimi-orch-01", "Any task")
 
 
 @patch("urllib.request.urlopen")
@@ -89,7 +106,8 @@ def test_run_agent_no_hitl_interaction(mock_urlopen, tmp_db):
     mock_urlopen.return_value = _make_ollama_mock("response")
 
     import architect_tools as at
-    with patch.object(at, "deploy_pipeline_with_ui") as mock_deploy, \
+    with patch("architect_tools.get_active_ollama_url", return_value="http://192.168.1.8:11434"), \
+         patch.object(at, "deploy_pipeline_with_ui") as mock_deploy, \
          patch.object(at, "generate_token") as mock_token:
         at.run_agent(tmp_db, "kimi-orch-01", "Task")
         mock_deploy.assert_not_called()

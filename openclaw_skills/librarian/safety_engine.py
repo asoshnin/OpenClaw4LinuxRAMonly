@@ -33,6 +33,29 @@ except ImportError:
     sys.path.append(os.path.dirname(__file__))
     from librarian_ctl import validate_path
 
+try:
+    import sys as _sys2
+    _sys2.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from config import get_active_ollama_url, INFERENCE_ALERT
+except ImportError:
+    # Fallback: if config is not importable, define stubs
+    def get_active_ollama_url():
+        try:
+            urllib.request.urlopen("http://192.168.1.8:11434/api/tags", timeout=2.0)
+            return "http://192.168.1.8:11434"
+        except Exception:
+            pass
+        try:
+            urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=2.0)
+            return "http://127.0.0.1:11434"
+        except Exception:
+            return None
+    INFERENCE_ALERT = (
+        "INFERENCE_ALERT: Both Local and GPU Ollama servers are offline. "
+        "Permission required to use Cloud LLM (Gemini) for this task. "
+        "Reply with 'Approve Cloud' to proceed."
+    )
+
 def truncate_for_distillation(text: str, limit: int = 12000) -> str:
     """[DES-18] Prevent Context Window Overflow."""
     if len(text) <= limit:
@@ -46,9 +69,27 @@ def truncate_for_distillation(text: str, limit: int = 12000) -> str:
 
 class SafetyDistillationEngine:
     """[DES-12] Hybrid Safety Distillation Engine with sensitivity routing."""
-    
-    def __init__(self, ollama_url="http://127.0.0.1:11434"):
-        self.ollama_url = ollama_url
+
+    def __init__(self, ollama_url: str | None = None):
+        """Initialise the engine, probing the tiered Ollama servers.
+
+        Args:
+            ollama_url: Override URL for testing. If None (default), the tiered
+                        resolver is used (GPU server → local).
+
+        Raises:
+            RuntimeError: If no Ollama server is reachable (fail-safe — no cloud
+                          fallback on distillation, which always carries sensitive data).
+        """
+        if ollama_url is not None:
+            # Explicit override — used in tests / backwards-compat callers
+            self.ollama_url = ollama_url
+        else:
+            active = get_active_ollama_url()
+            if active is None:
+                raise RuntimeError(INFERENCE_ALERT)
+            self.ollama_url = active
+
         self.local_model = "nn-tsuzu/lfm2.5-1.2b-instruct"
         self.cloud_model = "gemini-3.1-flash-lite-preview"
         self.embed_model = "nomic-embed-text"

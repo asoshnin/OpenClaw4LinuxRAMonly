@@ -18,10 +18,10 @@ import urllib.request
 import urllib.error
 
 try:
-    from config import WORKSPACE_ROOT, OLLAMA_URL, LOCAL_MODEL
+    from config import WORKSPACE_ROOT, OLLAMA_URL, LOCAL_MODEL, get_active_ollama_url, INFERENCE_ALERT
 except ImportError:
     sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-    from config import WORKSPACE_ROOT, OLLAMA_URL, LOCAL_MODEL
+    from config import WORKSPACE_ROOT, OLLAMA_URL, LOCAL_MODEL, get_active_ollama_url, INFERENCE_ALERT
 
 try:
     from librarian.librarian_ctl import validate_path as _validate_path_impl
@@ -67,29 +67,26 @@ def _log_routing_action(db_path: str, action: str, rationale: str) -> None:
         logger.warning("Router audit write failed (non-fatal): %s", e)
 
 
-def _ping_ollama() -> bool:
-    """Return True if Ollama is reachable, False otherwise."""
-    try:
-        urllib.request.urlopen(f"{OLLAMA_URL}/api/tags", timeout=3.0)
-        return True
-    except (urllib.error.URLError, OSError):
-        return False
+def _ping_ollama() -> tuple[bool, str | None]:
+    """Probe tiered Ollama servers. Returns (True, active_url) or (False, None)."""
+    url = get_active_ollama_url()
+    return (url is not None, url)
 
 
-def _call_local(task_text: str) -> str:
-    """Call the local Ollama model directly (raw generation, no distillation)."""
+def _call_local(task_text: str, active_url: str) -> str:
+    """Call the Ollama model at `active_url` directly (raw generation, no distillation)."""
     payload = json.dumps({
         "model":  LOCAL_MODEL,
         "prompt": task_text,
         "stream": False,
     }).encode("utf-8")
     req = urllib.request.Request(
-        f"{OLLAMA_URL}/api/generate",
+        f"{active_url}/api/generate",
         data=payload,
         headers={"Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=60.0) as resp:
+        with urllib.request.urlopen(req, timeout=600.0) as resp:
             result = json.loads(resp.read().decode("utf-8"))
             response = result.get("response", "").strip()
             if not response:
@@ -98,7 +95,7 @@ def _call_local(task_text: str) -> str:
                 )
             return response
     except urllib.error.URLError as e:
-        raise RuntimeError(f"Ollama unreachable at {OLLAMA_URL}: {e}") from e
+        raise RuntimeError(f"Ollama unreachable at {active_url}: {e}") from e
 
 
 def _call_cloud(task_text: str) -> str:
@@ -153,22 +150,24 @@ def route_inference(
 
     # ── Local path ───────────────────────────────────────────────────────────
     if min_model_tier == "local":
-        if not _ping_ollama():
+        reachable, active_url = _ping_ollama()
+        if not reachable:
             _log_routing_action(
                 db_path, ACTION_ROUTE_LOCAL_FAIL,
-                f"Ollama unreachable at {OLLAMA_URL}",
+                "INFERENCE_ALERT: both GPU-remote and local Ollama servers are offline.",
             )
-            logger.error("ROUTE_LOCAL_FAIL: Ollama is down. No cloud fallback.")
-            raise RuntimeError(
-                f"Ollama is unreachable at {OLLAMA_URL}. "
-                "Start it with: ollama serve"
+            logger.error(
+                "ROUTE_LOCAL_FAIL: both Ollama servers offline. "
+                "Returning INFERENCE_ALERT — no cloud fallback."
             )
-        response = _call_local(task_text)
+            # Fail-Safe: return the alert string; do NOT route to cloud automatically
+            return INFERENCE_ALERT
+        response = _call_local(task_text, active_url)
         _log_routing_action(
             db_path, ACTION_ROUTE_LOCAL,
-            f"Local inference completed. preview={response[:80]!r}",
+            f"Local inference completed at {active_url}. preview={response[:80]!r}",
         )
-        logger.info("ROUTE_LOCAL: inference complete.")
+        logger.info("ROUTE_LOCAL: inference complete via %s.", active_url)
         return response
 
     # ── Cloud path (is_sensitive=False only, enforced above) ─────────────────

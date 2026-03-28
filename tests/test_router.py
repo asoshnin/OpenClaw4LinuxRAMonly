@@ -8,6 +8,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 SENTINEL = "[SYS-HALT: HITL REQUIRED - SENSITIVE CLOUD ROUTING]"
+FAKE_URL  = "http://192.168.1.8:11434"   # pretend GPU server is up
 
 
 def _get_router(ws):
@@ -41,7 +42,7 @@ def test_routing_halt_sensitive_cloud(tmp_db):
 
 def test_routing_halt_never_calls_cloud(tmp_db):
     """Verify cloud is never touched regardless of availability."""
-    with patch("router._ping_ollama", return_value=True), \
+    with patch("router._ping_ollama", return_value=(True, FAKE_URL)), \
          patch("router._call_cloud") as mock_cloud:
         import router
         with pytest.raises(PermissionError):
@@ -49,11 +50,11 @@ def test_routing_halt_never_calls_cloud(tmp_db):
         mock_cloud.assert_not_called()
 
 
-# ── Block A: Local path ───────────────────────────────────────────────────
+# ── Block B: Local path ───────────────────────────────────────────────────
 
 def test_route_local_sensitive_available(tmp_db):
-    """sensitive=True + tier=local + Ollama up → returns response, logs ROUTE_LOCAL."""
-    with patch("router._ping_ollama", return_value=True), \
+    """sensitive=True + tier=local + GPU server up → returns response, logs ROUTE_LOCAL."""
+    with patch("router._ping_ollama", return_value=(True, FAKE_URL)), \
          patch("router._call_local", return_value="local answer") as mock_local:
         import router
         result = router.route_inference("task", True, "local", tmp_db)
@@ -64,26 +65,30 @@ def test_route_local_sensitive_available(tmp_db):
 
 
 def test_route_local_sensitive_unavailable(tmp_db):
-    """sensitive=True + tier=local + Ollama down → RuntimeError, ROUTE_LOCAL_FAIL logged."""
-    with patch("router._ping_ollama", return_value=False):
-        import router
-        with pytest.raises(RuntimeError, match="Ollama"):
-            router.route_inference("task", True, "local", tmp_db)
+    """sensitive=True + tier=local + both Ollama servers down → INFERENCE_ALERT string, ROUTE_LOCAL_FAIL logged.
 
+    Fail-Safe: must return alert string, not raise, and never touch cloud.
+    """
+    with patch("router._ping_ollama", return_value=(False, None)):
+        import router
+        result = router.route_inference("task", True, "local", tmp_db)
+
+    assert "INFERENCE_ALERT" in result
+    assert "Approve Cloud" in result
     assert "ROUTE_LOCAL_FAIL" in _audit_actions(tmp_db)
 
 
 def test_route_local_no_cloud_fallback(tmp_db):
-    """When Ollama is down with tier=local, cloud must NOT be called under any circumstances."""
-    with patch("router._ping_ollama", return_value=False), \
+    """When both Ollama servers are down, cloud must NOT be called under any circumstances."""
+    with patch("router._ping_ollama", return_value=(False, None)), \
          patch("router._call_cloud") as mock_cloud:
         import router
-        with pytest.raises(RuntimeError):
-            router.route_inference("task", True, "local", tmp_db)
+        result = router.route_inference("task", True, "local", tmp_db)
         mock_cloud.assert_not_called()
+        assert "INFERENCE_ALERT" in result
 
 
-# ── Block A: Cloud path ───────────────────────────────────────────────────
+# ── Block C: Cloud path ───────────────────────────────────────────────────
 
 def test_route_cloud_nonsensitive(tmp_db):
     """not sensitive + tier=cloud → calls cloud, logs ROUTE_CLOUD."""
@@ -96,13 +101,13 @@ def test_route_cloud_nonsensitive(tmp_db):
     assert "ROUTE_CLOUD" in _audit_actions(tmp_db)
 
 
-# ── Block A: Audit log completeness ──────────────────────────────────────
+# ── Block D: Audit log completeness ──────────────────────────────────────
 
 @pytest.mark.parametrize("sensitive,tier,mock_ping,expected_action", [
-    (True,  "cloud", True,  "ROUTING_HALT"),
-    (True,  "local", True,  "ROUTE_LOCAL"),
-    (True,  "local", False, "ROUTE_LOCAL_FAIL"),
-    (False, "cloud", True,  "ROUTE_CLOUD"),
+    (True,  "cloud", (True,  FAKE_URL), "ROUTING_HALT"),
+    (True,  "local", (True,  FAKE_URL), "ROUTE_LOCAL"),
+    (True,  "local", (False, None),     "ROUTE_LOCAL_FAIL"),
+    (False, "cloud", (True,  FAKE_URL), "ROUTE_CLOUD"),
 ])
 def test_audit_log_written_for_every_outcome(tmp_db, sensitive, tier, mock_ping, expected_action):
     """Every routing outcome writes exactly one audit_logs record."""
@@ -112,8 +117,8 @@ def test_audit_log_written_for_every_outcome(tmp_db, sensitive, tier, mock_ping,
         import router
         try:
             router.route_inference("task", sensitive, tier, tmp_db)
-        except (PermissionError, RuntimeError):
-            pass  # expected for ROUTING_HALT and ROUTE_LOCAL_FAIL
+        except PermissionError:
+            pass  # expected for ROUTING_HALT
 
     actions = _audit_actions(tmp_db)
     assert expected_action in actions, f"Expected {expected_action} in audit_logs, got {actions}"
