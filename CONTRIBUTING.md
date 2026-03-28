@@ -13,7 +13,7 @@ pip install -r requirements.txt
 pytest tests/ -v
 ```
 
-All 156+ tests run without a live Ollama or Obsidian instance — all HTTP calls are mocked. A clean run with only Python and pip is required.
+All 179+ tests run without a live Ollama or Obsidian instance — all HTTP calls are mocked. A clean run with only Python and pip is required.
 
 ---
 

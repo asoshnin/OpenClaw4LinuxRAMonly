@@ -18,9 +18,11 @@ import os
 import json
 import time
 import logging
+import sqlite3
 import urllib.request
 import urllib.error
 import urllib.parse
+from typing import TypedDict
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +33,28 @@ OBSIDIAN_BASE_URL = os.environ.get("OBSIDIAN_BASE_URL", "http://127.0.0.1:27123"
 OBSIDIAN_API_KEY = os.environ.get("OBSIDIAN_API_KEY", "")
 OBSIDIAN_TIMEOUT = 10.0     # seconds — applied to every API call
 VAULT_INGEST_MAX_BYTES = int(os.environ.get("VAULT_INGEST_MAX_BYTES", "50000"))
+
+# ---------------------------------------------------------------------------
+# Vault QA (Sprint 11) — RAG context assembly constants
+# ---------------------------------------------------------------------------
+VAULT_QA_NOTE_MAX_CHARS = 3000    # per-note excerpt cap
+VAULT_QA_TOTAL_MAX_CHARS = 12000  # Context Guard ceiling (standalone CLI)
+VAULT_QA_PROMPT_MAX_CHARS = 6000  # Context Guard ceiling when called from run_agent()
+
+
+class VaultQASource(TypedDict):
+    """A single vault note retrieved as part of a Vault QA context bundle."""
+    path: str       # vault-relative path, e.g. '20 - AREAS/23 - AI/note.md'
+    wikilink: str   # Obsidian wikilink, e.g. '[[note]]'
+    excerpt: str    # Note content truncated to VAULT_QA_NOTE_MAX_CHARS
+
+
+class VaultQAResult(TypedDict):
+    """Result of a vault_qa() RAG retrieval loop."""
+    query: str
+    sources: list          # list[VaultQASource]
+    context_text: str      # Formatted, Context-Guard-capped text for prompt injection
+    total_chars: int       # len(context_text)
 
 
 def _validate_vault_path(vault_path: str) -> None:
@@ -265,3 +289,138 @@ class ObsidianBridge:
             "url": self.base_url,
             "latency_ms": latency_ms if reachable else 0,
         }
+
+    def search_vault(self, query: str, limit: int = 5) -> list:
+        """Search the vault using the Obsidian Local REST API simple search endpoint.
+
+        Calls GET /search/simple/?query=<encoded>&contextLength=100 and returns
+        the top `limit` vault-relative paths ordered by descending score.
+
+        Args:
+            query: Plain-text search query. Must not be empty.
+            limit: Maximum number of results to return. Clamped to [1, 10].
+
+        Returns:
+            list[str] of vault-relative paths (highest score first).
+            Returns [] if no results found.
+
+        Raises:
+            ValueError:   If query is empty or whitespace.
+            RuntimeError: If the Obsidian API returns an HTTP error.
+            urllib.error.URLError: On connection-level failures.
+        """
+        if not query or not query.strip():
+            raise ValueError("search_vault: query must not be empty.")
+        limit = min(max(1, limit), 10)  # clamp to [1, 10]
+        encoded_query = urllib.parse.quote(query.strip(), safe="")
+        path = f"/search/simple/?query={encoded_query}&contextLength=100"
+        _, body = self._make_request("GET", path)
+        results = json.loads(body)
+        paths = [
+            r["filename"]
+            for r in results
+            if isinstance(r, dict) and "filename" in r
+        ]
+        logger.debug("search_vault: query=%r returned %d results", query, len(paths))
+        return paths[:limit]
+
+
+# ---------------------------------------------------------------------------
+# vault_qa() — Standalone RAG retrieval function (Sprint 11)
+# ---------------------------------------------------------------------------
+
+def vault_qa(
+    query: str,
+    db_path: str = None,
+    limit: int = 5,
+    is_sensitive: bool = False,
+    _max_chars: int = None,
+) -> dict:
+    """Perform a full RAG retrieval loop against the Obsidian vault.
+
+    Sequence:
+      1. Ping Obsidian — raise RuntimeError if not running.
+      2. search_vault(query, limit) → ranked list of vault-relative paths.
+      3. read_note(path) for each path; unreadable notes are skipped (WARNING).
+      4. Truncate each note to VAULT_QA_NOTE_MAX_CHARS.
+      5. Assemble context_text with '--- Source: [[X]] ---' headers.
+      6. Apply Context Guard ceiling (VAULT_QA_TOTAL_MAX_CHARS or _max_chars).
+      7. Audit log: action='VAULT_QA', rationale=query[:200] ONLY.
+
+    SECURITY: Never log or store context_text externally.
+              Use only in local LLM prompt context.
+              audit_logs.rationale contains the query only — never note content.
+
+    Args:
+        query:        Search query (must not be empty).
+        db_path:      Optional factory.db path for audit logging (Airlock NOT applied
+                      to vault_root — this db_path IS workspace-scoped however).
+        limit:        Max notes to retrieve (default 5, clamped to [1, 10]).
+        is_sensitive: If True, callers must route synthesis through local Ollama only.
+        _max_chars:   Internal override for Context Guard ceiling (for run_agent use).
+
+    Returns:
+        VaultQAResult dict with keys: query, sources, context_text, total_chars.
+
+    Raises:
+        ValueError:   If query is empty.
+        RuntimeError: If Obsidian is not running.
+    """
+    max_chars = _max_chars if _max_chars is not None else VAULT_QA_TOTAL_MAX_CHARS
+
+    bridge = ObsidianBridge()
+    if not bridge.ping():
+        raise RuntimeError(
+            "vault_qa: Obsidian Local REST API is not running. "
+            "Start Obsidian and enable the Local REST API plugin."
+        )
+
+    paths = bridge.search_vault(query, limit=limit)
+
+    sources = []
+    for path in paths:
+        try:
+            content = bridge.read_note(path)
+        except Exception as exc:
+            logger.warning("vault_qa: skipping unreadable note %r: %s", path, exc)
+            continue
+        stem = os.path.splitext(os.path.basename(path))[0]
+        wikilink = f"[[{stem}]]"
+        excerpt = content[:VAULT_QA_NOTE_MAX_CHARS]
+        sources.append({"path": path, "wikilink": wikilink, "excerpt": excerpt})
+
+    # Assemble context_text with Obsidian-style source headers
+    sections = []
+    for s in sources:
+        sections.append(f"--- Source: {s['wikilink']} ---\n{s['excerpt']}")
+    raw_context = "\n\n".join(sections)
+
+    # Apply Context Guard ceiling
+    context_text = raw_context[:max_chars]
+
+    # Audit log — query only, NEVER note content
+    if db_path:
+        try:
+            with sqlite3.connect(db_path) as conn:
+                conn.execute(
+                    "INSERT INTO audit_logs (action, rationale) VALUES (?, ?)",
+                    (
+                        "VAULT_QA",
+                        f"Query: {query[:200]!r} | results={len(sources)}, chars={len(context_text)}",
+                    ),
+                )
+                conn.commit()
+        except Exception as audit_err:
+            logger.warning("vault_qa: audit log failed (non-fatal): %s", audit_err)
+
+    logger.info(
+        "vault_qa: query=%r sources=%d context_chars=%d is_sensitive=%s",
+        query, len(sources), len(context_text), is_sensitive,
+    )
+
+    return {
+        "query": query,
+        "sources": sources,
+        "context_text": context_text,
+        "total_chars": len(context_text),
+    }

@@ -162,7 +162,7 @@ Agents may **propose** rule changes via `submit_kb_proposal()`. The Navigator **
 pytest tests/ -v
 ```
 
-All 156 tests run without a live Ollama or Obsidian instance (all HTTP calls are mocked). Coverage: Airlock path validation, symlink traversal attacks, sibling-prefix collision, Burn-on-Read token lifecycle, DB init round-trip, agent runner, dynamic LLM router (all 4 routing outcomes), knowledge base HITL gate, self-healing JSON circuit breaker, scoped epistemic scrubber, Obsidian API safety invariants (Context Guard, Sensitivity Gate), vault intelligent routing (dynamic domain discovery, duplicate-prefix detection), YAML schema validation, Johnny.Decimal taxonomy compliance, and autonomous vault health scan.
+All 179 tests run without a live Ollama or Obsidian instance (all HTTP calls are mocked). Coverage: Airlock path validation, symlink traversal attacks, sibling-prefix collision, Burn-on-Read token lifecycle, DB init round-trip, agent runner, dynamic LLM router (all 4 routing outcomes), knowledge base HITL gate, self-healing JSON circuit breaker, scoped epistemic scrubber, Obsidian API safety invariants (Context Guard, Sensitivity Gate), vault intelligent routing (dynamic domain discovery, duplicate-prefix detection), YAML schema validation, Johnny.Decimal taxonomy compliance, and autonomous vault health scan.
 
 ---
 

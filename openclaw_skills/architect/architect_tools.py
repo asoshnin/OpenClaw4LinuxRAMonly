@@ -268,22 +268,24 @@ def teardown_pipeline(db_path: str, pipeline_id: str) -> str:
             f"Skipped: {', '.join(skipped_agents) if skipped_agents else 'None'}.")
 
 
-def run_agent(db_path: str, agent_id: str, task_text: str) -> str:
+def run_agent(db_path: str, agent_id: str, task_text: str, vault_qa_result: dict = None) -> str:
     """[DES-S5-03 / DES-S6-02] Execute a task attributed to a registered agent.
 
-    Flow (Sprint 6 prompt order per SKILL.md):
+    Flow (Sprint 11 prompt order per SKILL.md):
       1. Load KB rules from knowledge_base.json (graceful on missing)
       2. Load agent record from DB (ValueError if not found)
       3. Retrieve Faint Path memory context (graceful fallback if archive empty)
-      4. Build prompt: KB rules → agent identity → memory → task
-      5. Call local Ollama — RuntimeError if unreachable or empty response
-      6. Log result to audit_logs with action='AGENT_RUN'
-      7. Return response string
+      4. (Optional) Inject [VAULT CONTEXT] from vault_qa_result (Sprint 11)
+      5. Build prompt: KB rules → identity → memory → vault context → task
+      6. Call local Ollama — RuntimeError if unreachable or empty response
+      7. Log result to audit_logs with action='AGENT_RUN'
+      8. Return response string
 
     Constraints (from SKILL.md):
       - Local Ollama ONLY — never cloud APIs
       - Must NOT touch HITL gate or deploy_pipeline_with_ui
       - Must raise on any failure — never return silently
+      - vault_qa_result.context_text is capped at VAULT_QA_PROMPT_MAX_CHARS
     """
     # 1. Load knowledge base (graceful — warn and continue if missing)
     kb_prefix = ""
@@ -325,7 +327,7 @@ def run_agent(db_path: str, agent_id: str, task_text: str) -> str:
         logger.warning("Memory archive unavailable (non-fatal): %s", mem_err)
         memory_text = "Memory archive unavailable."
 
-    # 4. Build prompt — SKILL.md order: KB → identity → memory → task
+    # 4. Build prompt — SKILL.md Sprint 11 order: KB → identity → memory → vault context → task
     description = agent.get("description") or agent.get("name", "AI agent")
     memory_text = memory_text[:4000]   # context window guard
     prompt_parts = []
@@ -333,6 +335,26 @@ def run_agent(db_path: str, agent_id: str, task_text: str) -> str:
         prompt_parts.append(kb_prefix)
     prompt_parts.append(f"[AGENT IDENTITY]\nYou are {agent['name']} — {description}.\n")
     prompt_parts.append(f"[MEMORY CONTEXT]\n{memory_text}\n")
+
+    # [VAULT CONTEXT] — Sprint 11: injected only when vault_qa_result is provided
+    if vault_qa_result and vault_qa_result.get("context_text"):
+        try:
+            from obsidian_bridge import VAULT_QA_PROMPT_MAX_CHARS
+        except ImportError:
+            VAULT_QA_PROMPT_MAX_CHARS = 6000
+        vault_context = vault_qa_result["context_text"][:VAULT_QA_PROMPT_MAX_CHARS]
+        wikilinks = ", ".join(
+            s["wikilink"] for s in vault_qa_result.get("sources", [])
+        )
+        vault_block = (
+            "[VAULT CONTEXT]\n"
+            "The following excerpts are from your Obsidian vault, retrieved for this query.\n"
+            "When citing a source, use Obsidian wikilink format: [[Note Name]].\n\n"
+            f"{vault_context}\n\n"
+            f"Sources retrieved: {wikilinks}\n"
+        )
+        prompt_parts.append(vault_block)
+
     prompt_parts.append(f"[TASK]\n{task_text}")
     prompt = "\n".join(prompt_parts)
 
@@ -700,6 +722,69 @@ def cmd_vault_health_check(args) -> int:
     return 0
 
 
+def cmd_vault_qa(args) -> int:
+    """Handler for 'vault-qa' subcommand — RAG retrieval from Obsidian vault.
+
+    Security: context_text is NEVER written to audit_logs.
+    Exit codes: 0=results found, 1=runtime error, 2=no results.
+    """
+    if not VAULT_TOOLS_AVAILABLE:
+        print(
+            "Error: vault-qa requires the obsidian_bridge module. "
+            "Ensure openclaw_skills/obsidian_bridge.py is present.",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+        from obsidian_bridge import vault_qa
+    except ImportError as e:
+        print(f"Error: cannot import vault_qa: {e}", file=sys.stderr)
+        return 1
+
+    try:
+        result = vault_qa(
+            query=args.query,
+            db_path=getattr(args, "db_path", None),
+            limit=getattr(args, "limit", 5),
+            is_sensitive=getattr(args, "sensitive", False),
+        )
+    except RuntimeError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    if not result["sources"]:
+        print(
+            f"No vault notes found matching: {args.query!r}\n"
+            "Try a different query or check that Obsidian is running.",
+            file=sys.stderr,
+        )
+        return 2
+
+    if getattr(args, "output_json", False):
+        # JSON output — safe: context_text is vault content (local only)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return 0
+
+    # Default: Markdown formatted output
+    wikilinks = " ".join(s["wikilink"] for s in result["sources"])
+    lines = [
+        f"## Vault QA: {args.query}",
+        "",
+        f"**Sources:** {wikilinks}",
+        "",
+    ]
+    for source in result["sources"]:
+        lines.append(f"---\n### {source['wikilink']}\n{source['excerpt']}\n")
+
+    print("\n".join(lines))
+    return 0
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Architect Tools CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -805,6 +890,30 @@ if __name__ == "__main__":
         help="Optional factory.db path for audit logging",
     )
 
+    vqa_parser = subparsers.add_parser(
+        "vault-qa",
+        help="RAG: search Obsidian vault and return grounded context with [[wikilink]] citations",
+    )
+    vqa_parser.add_argument(
+        "--query", dest="query", required=True,
+        help="Plain-text search query (required)",
+    )
+    vqa_parser.add_argument(
+        "--db-path", dest="db_path", type=str, default=None,
+        help="Optional factory.db path for audit logging",
+    )
+    vqa_parser.add_argument(
+        "--limit", dest="limit", type=int, default=5,
+        help="Max notes to retrieve (default 5, clamped to 1-10)",
+    )
+    vqa_parser.add_argument(
+        "--sensitive", dest="sensitive", action="store_true", default=False,
+        help="Mark retrieval as sensitive (local Ollama only for synthesis)",
+    )
+    vqa_parser.add_argument(
+        "--json", dest="output_json", action="store_true", default=False,
+        help="Output raw JSON instead of formatted Markdown",
+    )
 
     args = parser.parse_args()
 
@@ -842,6 +951,9 @@ if __name__ == "__main__":
             sys.exit(exit_code)
         elif args.command == "vault-health-check":
             exit_code = cmd_vault_health_check(args)
+            sys.exit(exit_code)
+        elif args.command == "vault-qa":
+            exit_code = cmd_vault_qa(args)
             sys.exit(exit_code)
     except SystemExit:
         raise  # Propagate sys.exit() calls cleanly

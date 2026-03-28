@@ -3,6 +3,31 @@
 All notable changes are listed by Sprint. This project follows a sprint-based delivery model documented in `_Development/OpenClaw/`.
 
 ---
+## Sprint 11 (2026-03-28) — The Semantic Bridge
+
+- Added `ObsidianBridge.search_vault(query, limit=5)`: calls `GET /search/simple/` Obsidian Local REST API endpoint; returns top-N vault-relative paths ordered by score; query URL-encoded (`%20` not `+`); limit clamped to `[1, 10]`
+- Added standalone `vault_qa(query, db_path, limit, is_sensitive)` RAG function in `obsidian_bridge.py`:
+  - Full retrieval loop: search → per-note `read_note()` → truncate (3,000 chars/note) → assemble `context_text`
+  - `[[WikiLink]]` citations: stem of each note filename wrapped in `[[...]]`
+  - Context Guard: total context capped at 12,000 chars (standalone) or 6,000 chars (prompt injection)
+  - Audit log: `action='VAULT_QA'`, `rationale=query[:200]` only — vault note content never logged
+  - Obsidian unavailable → `RuntimeError`; unreadable notes → `WARNING` + skip (non-fatal)
+- Added `[VAULT CONTEXT]` prompt block to `run_agent()`:
+  - Injected after `[MEMORY CONTEXT]`, before `[TASK]` (Sprint 11 prompt order)
+  - Includes wikilink citation instruction: *"When citing a source, use [[Note Name]] format"*
+  - Only injected when `vault_qa_result` kwarg is provided — fully backward compatible
+- Added `vault-qa` subcommand to `architect_tools.py`:
+  - `--query` (required), `--db-path`, `--limit`, `--sensitive`, `--json`
+  - Exit codes: 0=results, 1=error (Obsidian down), 2=no results
+  - Markdown output: `## Vault QA: <query>` + `### [[Note]]` sections
+- Updated `lib-keeper-01` to v2.0: description includes Vault QA mode; `tool_names` += `vault-qa`
+- Updated `obsidian-vault-architect` to v3.0: description includes Mode C (Vault QA); `tool_names` += `vault-qa`
+- `REGISTRY.md` refreshed via `refresh-registry` to reflect both persona updates
+- `TypedDict`: `VaultQASource`, `VaultQAResult` added to `obsidian_bridge.py` for type clarity
+- Added 23 new tests across 3 files — **total: 179 passing**
+
+---
+
 ## Sprint 10 (2026-03-28) — OSS Community Readiness
 
 - Updated `CHANGELOG.md`, `README.md`, `CONTRIBUTING.md` with accurate test counts (156)

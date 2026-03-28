@@ -511,3 +511,92 @@ class TestIngestVaultNote:
                     sys.exit(1)
 
         assert exc_info.value.code == 1
+
+
+# ===========================================================================
+# E4 — search_vault() tests (Sprint 11)
+# ===========================================================================
+
+class TestSearchVault:
+    """Unit tests for ObsidianBridge.search_vault()."""
+
+    @pytest.fixture()
+    def bridge(self, monkeypatch):
+        monkeypatch.setenv("OBSIDIAN_API_KEY", "test-key")
+        monkeypatch.setenv("OBSIDIAN_BASE_URL", "http://127.0.0.1:27123")
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "openclaw_skills"))
+        from obsidian_bridge import ObsidianBridge
+        return ObsidianBridge()
+
+    def test_search_vault_returns_paths_in_order(self, bridge):
+        """API returns 3 results → returns 3 paths in score order."""
+        api_response = json.dumps([
+            {"filename": "20 - AREAS/23 - AI/note_a.md", "score": 1.5},
+            {"filename": "30 - RESOURCES/note_b.md", "score": 0.9},
+            {"filename": "10 - PROJECTS/note_c.md", "score": 0.3},
+        ])
+        with patch("urllib.request.urlopen", return_value=_mock_response(200, api_response)):
+            result = bridge.search_vault("agentic workflows")
+        assert result == [
+            "20 - AREAS/23 - AI/note_a.md",
+            "30 - RESOURCES/note_b.md",
+            "10 - PROJECTS/note_c.md",
+        ]
+
+    def test_search_vault_respects_limit(self, bridge):
+        """API returns 5 results but limit=2 → returns only 2 paths."""
+        api_response = json.dumps([
+            {"filename": f"folder/note_{i}.md", "score": float(5 - i)}
+            for i in range(5)
+        ])
+        with patch("urllib.request.urlopen", return_value=_mock_response(200, api_response)):
+            result = bridge.search_vault("query", limit=2)
+        assert len(result) == 2
+        assert result[0] == "folder/note_0.md"
+
+    def test_search_vault_empty_query_raises_before_http(self, bridge):
+        """Empty or whitespace query → ValueError before any HTTP call."""
+        import urllib.request
+        with patch("urllib.request.urlopen") as mock_http:
+            with pytest.raises(ValueError, match="must not be empty"):
+                bridge.search_vault("   ")
+            mock_http.assert_not_called()
+
+    def test_search_vault_empty_results_returns_empty_list(self, bridge):
+        """API returns [] → function returns []."""
+        with patch("urllib.request.urlopen", return_value=_mock_response(200, "[]")):
+            result = bridge.search_vault("obscure query with no matches")
+        assert result == []
+
+    def test_search_vault_obsidian_down_raises_runtime_error(self, bridge, monkeypatch):
+        """URLError (connection refused) → RuntimeError propagated."""
+        import urllib.error
+        with patch("urllib.request.urlopen", side_effect=_url_error()):
+            with pytest.raises(urllib.error.URLError):
+                bridge.search_vault("some query")
+
+    def test_search_vault_encodes_spaces_as_percent20(self, bridge):
+        """Query with spaces → URL path contains %20, not +."""
+        api_response = json.dumps([{"filename": "folder/note.md", "score": 1.0}])
+        captured_urls = []
+
+        def capture_urlopen(req, timeout=None):
+            captured_urls.append(req.full_url)
+            return _mock_response(200, api_response)
+
+        with patch("urllib.request.urlopen", side_effect=capture_urlopen):
+            bridge.search_vault("agentic workflows")
+
+        assert len(captured_urls) == 1
+        assert "%20" in captured_urls[0]
+        assert "+" not in captured_urls[0]
+
+    def test_search_vault_limit_clamped_to_10(self, bridge):
+        """limit=50 → clamped to 10 (API returns 12, function returns 10)."""
+        api_response = json.dumps([
+            {"filename": f"folder/note_{i}.md", "score": float(12 - i)}
+            for i in range(12)
+        ])
+        with patch("urllib.request.urlopen", return_value=_mock_response(200, api_response)):
+            result = bridge.search_vault("query", limit=50)
+        assert len(result) == 10
