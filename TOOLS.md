@@ -115,13 +115,63 @@ python3 openclaw_skills/architect/architect_tools.py run \
 
 ---
 
-## `src/tools/` — Vault Tools (Phase 2 — Not Yet Integrated)
 
-> [!WARNING]
-> These tools are **prototypes** placed in the legacy `src/` directory. They are not yet connected to `openclaw_skills/` and have no test coverage. They are scheduled for migration to `openclaw_skills/vault_tools/` in a future sprint.
+## `openclaw_skills/vault_tools/` — Vault Tools
 
-| File | Purpose |
-|---|---|
-| `vault_intelligent_router.py` | Maps note YAML metadata → correct Johnny.Decimal folder path |
-| `vault_schema_validator.py` | Validates YAML frontmatter against Universal Note Template schema |
-| `vault_taxonomy_guard.py` | Enforces `NN - ` prefix on all vault folder path components |
+**Path:** `openclaw_skills/vault_tools/`  
+**Role:** Vault routing, YAML schema validation, and Johnny.Decimal taxonomy enforcement.  
+All tools are invokable via `architect_tools.py` subcommands (Mode A) and drive
+the `ObsidianVaultArchitect` agent in autonomous health-scan mode (Mode B).
+
+| Module | Function | Description |
+|---|---|---|
+| `vault_intelligent_router.py` | `discover_domains(vault_root)` | Runtime-scans `20 - AREAS/` → domain slug map. No hardcoded map. |
+| `vault_intelligent_router.py` | `suggest_vault_path(metadata, filename, vault_root)` | Routes note to correct JD folder (case-insensitive, fallback to INBOX) |
+| `vault_schema_validator.py` | `validate_vault_metadata(content, expected_path)` | Validates YAML frontmatter; returns errors, warnings, and repair template |
+| `vault_taxonomy_guard.py` | `validate_taxonomy_compliance(vault_path)` | Enforces `NN - ` prefix on all vault path components |
+| `vault_health_check.py` | `run_vault_health_check(vault_root, db_path)` | Read-only vault health scan; duplicate JD prefixes classified as ERRORS |
+| `vault_health_check.py` | `format_health_report(result, vault_root)` | Renders health result as Obsidian-ready Markdown with YAML frontmatter |
+
+**Environment variables required:**
+
+| Variable | Required | Description |
+|---|---|---|
+| `OBSIDIAN_VAULT_PATH` | Yes (for routing & health check) | Absolute path to vault root (e.g. `~/obsidian-vault`) |
+| `OBSIDIAN_API_KEY` | Yes (for all bridge operations) | Local REST API plugin key |
+| `OBSIDIAN_BASE_URL` | No (default: `http://127.0.0.1:27123`) | Obsidian plugin URL — must be loopback |
+
+**`architect_tools.py` subcommands:**
+
+| Subcommand | Description | Exit Codes |
+|---|---|---|
+| `vault-route` | Suggest JD vault path for a note | 0=routed, 1=INBOX fallback |
+| `vault-validate` | Validate note YAML frontmatter | 0=valid, 1=runtime error, 2=invalid |
+| `vault-check-taxonomy` | Check path for `NN - ` prefix compliance | 0=pass, 1=runtime error, 2=fail |
+| `vault-health-check` | Full autonomous vault health scan | 0=success, 1=runtime error |
+
+**Examples:**
+
+```bash
+# Route a note based on its metadata
+python3 openclaw_skills/architect/architect_tools.py vault-route \
+  --metadata '{"type": "note", "domain": "AI"}' \
+  --filename "LLM_Paper.md"
+# → 20 - AREAS/23 - AI/LLM_Paper.md
+
+# Validate a specific note (via Obsidian bridge)
+python3 openclaw_skills/architect/architect_tools.py vault-validate \
+  --note-path "20 - AREAS/23 - AI/LLM_Paper.md"
+
+# Check a path for taxonomy compliance  
+python3 openclaw_skills/architect/architect_tools.py vault-check-taxonomy \
+  --vault-path "20 - AREAS/23 - AI/LLM_Paper.md"
+
+# Run full vault health scan and write report to vault
+python3 openclaw_skills/architect/architect_tools.py vault-health-check \
+  --vault-root ~/obsidian-vault \
+  --output-path "99 - META/vault_health_2026-03-28.md"
+```
+
+> **Security:** `vault_root` is read from `OBSIDIAN_VAULT_PATH` env var and is NOT
+> subject to Airlock (`validate_path()`). The vault lives outside `OPENCLAW_WORKSPACE`
+> by design. Only `--db-path` (factory.db) is Airlock-protected.

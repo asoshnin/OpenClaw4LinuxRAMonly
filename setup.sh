@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 # setup.sh — OpenClaw Cold Start Initialisation
-# Sprint 5: OSS Readiness | Sprint 7: Obsidian Integration
+# Sprint 5: OSS Readiness | Sprint 7: Obsidian Integration | Sprint 9: Vault Tools
 #
 # Usage:
 #   bash setup.sh
@@ -10,9 +10,11 @@
 #
 # Environment variables:
 #   OPENCLAW_WORKSPACE  — OpenClaw workspace dir (default: ~/.openclaw/workspace)
-#   OBSIDIAN_VAULT_PATH — Obsidian vault root for bootstrap (optional)
+#   OBSIDIAN_VAULT_PATH — Absolute path to Obsidian vault root.
+#                         REQUIRED for Sprint 9 vault tools (vault-route, vault-health-check,
+#                         discover_domains). Optional for Sprint 7 write/ingest operations.
 #   OBSIDIAN_BASE_URL   — Local REST API URL (default: http://127.0.0.1:27123)
-#   OBSIDIAN_API_KEY    — Required when using Obsidian integration
+#   OBSIDIAN_API_KEY    — Required when using any Obsidian integration feature
 #
 # All steps are idempotent — safe to re-run on an already-initialised workspace.
 # =============================================================================

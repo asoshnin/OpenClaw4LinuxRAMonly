@@ -38,6 +38,22 @@ try:
 except ImportError:
     ObsidianBridge = None  # type: ignore
 
+# Vault Tools — optional dependency (Sprint 9); graceful if not yet installed
+try:
+    _skills_root = os.path.dirname(os.path.dirname(__file__))
+    if _skills_root not in sys.path:
+        sys.path.insert(0, _skills_root)
+    from vault_tools import (
+        discover_domains,
+        suggest_vault_path,
+        validate_vault_metadata,
+        validate_taxonomy_compliance,
+    )
+    from vault_tools.vault_health_check import run_vault_health_check, format_health_report
+    VAULT_TOOLS_AVAILABLE = True
+except ImportError:
+    VAULT_TOOLS_AVAILABLE = False  # type: ignore
+
 logger = logging.getLogger(__name__)
 
 
@@ -482,6 +498,208 @@ is_sensitive: false
         return None
 
 
+# ---------------------------------------------------------------------------
+# Vault Tool Commands (Sprint 9 — Mode A: Tool Exposure)
+# ---------------------------------------------------------------------------
+
+def _vault_audit_log(
+    db_path: str,
+    action: str,
+    rationale: str,
+) -> None:
+    """Write an optional audit log entry for vault tool subcommands."""
+    if not db_path:
+        return
+    try:
+        valid_db = validate_path(db_path)
+        with sqlite3.connect(valid_db) as conn:
+            conn.execute(
+                "INSERT INTO audit_logs (agent_id, action, rationale) VALUES (?, ?, ?)",
+                ("obsidian-vault-architect", action, rationale),
+            )
+            conn.commit()
+    except Exception as exc:
+        logger.warning("vault audit log failed: %s", exc)
+
+
+def cmd_vault_route(args) -> int:
+    """Suggest the correct vault path for a note based on its metadata.
+
+    Exit codes: 0 = success (routed to a specific area),
+                1 = INBOX fallback (no domain match — informational).
+    """
+    if not VAULT_TOOLS_AVAILABLE:
+        print(
+            "Error: vault_tools package not found. "
+            "Ensure openclaw_skills/vault_tools/ is installed (Sprint 9).",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        metadata = json.loads(args.metadata)
+    except json.JSONDecodeError as exc:
+        print(f"Error: --metadata is not valid JSON: {exc}", file=sys.stderr)
+        return 1
+
+    vault_root = getattr(args, "vault_root", None) or os.environ.get("OBSIDIAN_VAULT_PATH", "")
+    suggested = suggest_vault_path(metadata, args.filename, vault_root)
+    print(suggested)
+
+    _vault_audit_log(
+        getattr(args, "db_path", None),
+        "VAULT_ROUTE",
+        f"Routed '{args.filename}' → '{suggested}' (domain={metadata.get('domain', '')})",
+    )
+
+    if suggested.startswith("00 - INBOX"):
+        logger.warning(
+            "vault-route: no domain match — '%s' routed to INBOX fallback.",
+            args.filename,
+        )
+        return 1
+    return 0
+
+
+def cmd_vault_validate(args) -> int:
+    """Validate a note's YAML frontmatter.
+
+    Exit codes: 0 = valid, 1 = runtime error, 2 = validation failure.
+    """
+    if not VAULT_TOOLS_AVAILABLE:
+        print(
+            "Error: vault_tools package not found. "
+            "Ensure openclaw_skills/vault_tools/ is installed (Sprint 9).",
+            file=sys.stderr,
+        )
+        return 1
+
+    content = getattr(args, "content", None)
+
+    if not content:
+        # Try reading from Obsidian
+        if ObsidianBridge is None:
+            print(
+                "Error: ObsidianBridge not available and --content not provided.",
+                file=sys.stderr,
+            )
+            return 1
+        try:
+            bridge = ObsidianBridge()
+        except (ValueError, ImportError) as exc:
+            print(f"Error: Cannot connect to Obsidian bridge: {exc}", file=sys.stderr)
+            return 1
+
+        if not bridge.ping():
+            print(
+                "Error: Obsidian is not running. "
+                "Start Obsidian or provide note content via --content.",
+                file=sys.stderr,
+            )
+            return 1
+
+        try:
+            content = bridge.read_note(args.note_path)
+        except FileNotFoundError:
+            print(f"Error: Note not found in vault: {args.note_path}", file=sys.stderr)
+            return 1
+        except Exception as exc:
+            print(f"Error reading note: {exc}", file=sys.stderr)
+            return 1
+
+    result = validate_vault_metadata(content, expected_path=args.note_path)
+    print(json.dumps({
+        "is_valid": result["is_valid"],
+        "errors": result["errors"],
+        "warnings": result["warnings"],
+    }, indent=2))
+
+    _vault_audit_log(
+        getattr(args, "db_path", None),
+        "VAULT_VALIDATE",
+        f"Validated '{args.note_path}': valid={result['is_valid']}, "
+        f"errors={len(result['errors'])}, warnings={len(result['warnings'])}",
+    )
+
+    return 0 if result["is_valid"] else 2
+
+
+def cmd_vault_check_taxonomy(args) -> int:
+    """Check vault path compliance with Johnny.Decimal taxonomy.
+
+    Exit codes: 0 = compliant, 1 = runtime error, 2 = violations found.
+    """
+    if not VAULT_TOOLS_AVAILABLE:
+        print(
+            "Error: vault_tools package not found. "
+            "Ensure openclaw_skills/vault_tools/ is installed (Sprint 9).",
+            file=sys.stderr,
+        )
+        return 1
+
+    compliant, issues = validate_taxonomy_compliance(args.vault_path)
+    if compliant:
+        print("PASS")
+    else:
+        print("FAIL")
+        for issue in issues:
+            print(f"  → {issue}")
+
+    _vault_audit_log(
+        getattr(args, "db_path", None),
+        "VAULT_CHECK_TAXONOMY",
+        f"Taxonomy check '{args.vault_path}': {'PASS' if compliant else 'FAIL'} — "
+        f"{len(issues)} violation(s)",
+    )
+
+    return 0 if compliant else 2
+
+
+def cmd_vault_health_check(args) -> int:
+    """Run autonomous read-only vault health scan and output Markdown report.
+
+    Exit codes: 0 = success, 1 = runtime error.
+    """
+    if not VAULT_TOOLS_AVAILABLE:
+        print(
+            "Error: vault_tools package not found. "
+            "Ensure openclaw_skills/vault_tools/ is installed (Sprint 9).",
+            file=sys.stderr,
+        )
+        return 1
+
+    vault_root = getattr(args, "vault_root", None) or os.environ.get("OBSIDIAN_VAULT_PATH", "")
+    db_path = getattr(args, "db_path", None)
+    output_path = getattr(args, "output_path", None)
+
+    try:
+        health_result = run_vault_health_check(vault_root, db_path=db_path)
+    except (RuntimeError, ImportError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    report_md = format_health_report(health_result, vault_root=vault_root)
+
+    if output_path and ObsidianBridge is not None:
+        try:
+            bridge = ObsidianBridge()
+            if bridge.ping():
+                bridge.write_note(output_path, report_md)
+                _vault_audit_log(
+                    db_path,
+                    "VAULT_HEALTH_REPORT",
+                    f"Health report written to vault: {output_path}",
+                )
+                print(f"Health report written to vault: {output_path}")
+                return 0
+        except Exception as exc:
+            logger.warning("vault-health-check: could not write report to vault: %s", exc)
+
+    # Obsidian unavailable or no output path — print to stdout (non-fatal)
+    print(report_md)
+    return 0
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Architect Tools CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -516,6 +734,78 @@ if __name__ == "__main__":
     vault_parser.add_argument("--sensitive", action="store_true",
                               help="Mark as sensitive — write will be refused")
 
+
+    # ── Sprint 9: Vault Tool Subcommands ────────────────────────────────────
+
+    vr_parser = subparsers.add_parser(
+        "vault-route",
+        help="Suggest the correct Johnny.Decimal vault path for a note",
+    )
+    vr_parser.add_argument(
+        "--metadata", required=True, type=str,
+        help="JSON string of note YAML frontmatter (e.g. {type,domain} dict)"
+    )
+    vr_parser.add_argument(
+        "--filename", required=True, type=str,
+        help="Target note filename (e.g. LLM_Notes.md)",
+    )
+    vr_parser.add_argument(
+        "--vault-root", dest="vault_root", type=str, default=None,
+        help="Vault root path (default: $OBSIDIAN_VAULT_PATH)",
+    )
+    vr_parser.add_argument(
+        "--db-path", dest="db_path", type=str, default=None,
+        help="Optional factory.db path for audit logging",
+    )
+
+    vv_parser = subparsers.add_parser(
+        "vault-validate",
+        help="Validate a vault note's YAML frontmatter schema",
+    )
+    vv_parser.add_argument(
+        "--note-path", dest="note_path", required=True, type=str,
+        help="Vault-relative note path (e.g. '20 - AREAS/23 - AI/Note.md')",
+    )
+    vv_parser.add_argument(
+        "--content", type=str, default=None,
+        help="Raw markdown string (skips live Obsidian read if provided)",
+    )
+    vv_parser.add_argument(
+        "--db-path", dest="db_path", type=str, default=None,
+        help="Optional factory.db path for audit logging",
+    )
+
+    vct_parser = subparsers.add_parser(
+        "vault-check-taxonomy",
+        help="Check a vault path for Johnny.Decimal 'NN - ' prefix compliance",
+    )
+    vct_parser.add_argument(
+        "--vault-path", dest="vault_path", required=True, type=str,
+        help="Vault-relative path to check (e.g. '20 - AREAS/23 - AI/Note.md')",
+    )
+    vct_parser.add_argument(
+        "--db-path", dest="db_path", type=str, default=None,
+        help="Optional factory.db path for audit logging",
+    )
+
+    vhc_parser = subparsers.add_parser(
+        "vault-health-check",
+        help="Run autonomous read-only health scan of the entire Obsidian vault",
+    )
+    vhc_parser.add_argument(
+        "--vault-root", dest="vault_root", type=str, default=None,
+        help="Vault root path (default: $OBSIDIAN_VAULT_PATH)",
+    )
+    vhc_parser.add_argument(
+        "--output-path", dest="output_path", type=str, default=None,
+        help="Optional vault-relative path to write the Markdown health report",
+    )
+    vhc_parser.add_argument(
+        "--db-path", dest="db_path", type=str, default=None,
+        help="Optional factory.db path for audit logging",
+    )
+
+
     args = parser.parse_args()
 
     try:
@@ -541,6 +831,20 @@ if __name__ == "__main__":
                 print(f"Written to vault: {written}")
             else:
                 print("Vault write skipped (Obsidian unavailable, sensitive flag, or error).")
+        elif args.command == "vault-route":
+            exit_code = cmd_vault_route(args)
+            sys.exit(exit_code)
+        elif args.command == "vault-validate":
+            exit_code = cmd_vault_validate(args)
+            sys.exit(exit_code)
+        elif args.command == "vault-check-taxonomy":
+            exit_code = cmd_vault_check_taxonomy(args)
+            sys.exit(exit_code)
+        elif args.command == "vault-health-check":
+            exit_code = cmd_vault_health_check(args)
+            sys.exit(exit_code)
+    except SystemExit:
+        raise  # Propagate sys.exit() calls cleanly
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
