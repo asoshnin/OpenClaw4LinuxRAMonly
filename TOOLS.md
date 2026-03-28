@@ -175,3 +175,17 @@ python3 openclaw_skills/architect/architect_tools.py vault-health-check \
 > **Security:** `vault_root` is read from `OBSIDIAN_VAULT_PATH` env var and is NOT
 > subject to Airlock (`validate_path()`). The vault lives outside `OPENCLAW_WORKSPACE`
 > by design. Only `--db-path` (factory.db) is Airlock-protected.
+
+---
+
+## `prompt_architect_tools.py` — Prompt Architect & Backlog Manager
+
+**Path:** `openclaw_skills/prompt_architect/prompt_architect_tools.py`  
+**Role:** Generates personas via structured Intelligence Packages and synthesizes Socratic epistemic gaps for self-evolution.
+
+| Function | Description | Key Args |
+|---|---|---|
+| `log_epistemic_gap` | Logs tool/knowledge/logic failures to `epistemic_backlog` | `agent_id`, `gap_type`, `description`, `context_json`, `[db_path]` |
+| `register_from_package` | Registers an agent from an `AgentIntelligencePackage` JSON payload, saves locally, and syncs safely to Obsidian. | `package_json`, `[db_path]` |
+| `synthesize_backlog_report` | Atomically generates the priority BACKLOG.md from raw `epistemic_backlog` gaps | `[db_path]`, `[output_path]` |
+

@@ -1,6 +1,7 @@
 """
-Database Migration Script - Sprint 3.5 + Sprint 5 + Sprint 6
-Lifecycle, resilience, schema enrichment, and intelligence layer updates.
+Database Migration Script - Sprint 3.5 + Sprint 5 + Sprint 6 + Sprint 13
+Lifecycle, resilience, schema enrichment, intelligence layer, and epistemic
+self-evolution updates.
 """
 import sqlite3
 import logging
@@ -117,6 +118,27 @@ def migrate_database(db_path: str):
                     raise
         else:
             logger.info("distilled_memory table not found — step 7 will run after init_vector_db().")
+
+        # 8. Create epistemic_backlog table (Sprint 13 — Self-Evolution Loop)
+        # Written by all agents to record tool gaps, knowledge holes, and logic failures.
+        # Periodically synthesised by the backlog-manager into BACKLOG.md.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS epistemic_backlog (
+                entry_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_id     TEXT NOT NULL,
+                gap_type     TEXT CHECK(gap_type IN (
+                                 'tool_missing',
+                                 'knowledge_insufficient',
+                                 'logic_failure'
+                             )),
+                description  TEXT NOT NULL,
+                context_json JSON,
+                status       TEXT DEFAULT 'raw'
+                             CHECK(status IN ('raw', 'analyzed', 'prioritized', 'resolved')),
+                created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        logger.info("Ensured epistemic_backlog table exists.")
 
         conn.commit()
     logger.info("Migration completed successfully.")

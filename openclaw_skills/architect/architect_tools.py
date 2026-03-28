@@ -180,18 +180,34 @@ def deploy_pipeline(db_path: str, pipeline_id: str, pipeline_name: str, topology
 
 
 def request_ui_approval(prompt_text: str) -> bool:
-    """Displays a native GUI popup to request human-in-the-loop approval."""
-    if not TK_AVAILABLE:
+    """Displays a native GUI popup or console prompt for human-in-the-loop approval."""
+    # Guard: Use console if no DISPLAY environment variable exists (even if TK is installed)
+    if not TK_AVAILABLE or "DISPLAY" not in os.environ:
         print(f"\n[APPROVAL REQUESTED]: {prompt_text}")
-        response = input("Approve? (yes/no): ").lower().strip()
-        return response in ("yes", "y")
+        # When running in OpenClaw exec/process, input() may fail. 
+        # For non-TTY environments, we should default to rejection or rely on gateway interaction.
+        try:
+            response = input("Approve? (yes/no): ").lower().strip()
+            return response in ("yes", "y")
+        except EOFError:
+            logger.warning("request_ui_approval: EOFError on input(). Defaulting to rejection.")
+            return False
     
-    root = tk.Tk()
-    root.withdraw()
-    root.attributes('-topmost', True)
-    result = messagebox.askyesno("HITL Security Gate", prompt_text)
-    root.destroy()
-    return result
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes('-topmost', True)
+        result = messagebox.askyesno("HITL Security Gate", prompt_text)
+        root.destroy()
+        return result
+    except Exception as e:
+        logger.error("request_ui_approval: Tkinter failed (%s). Falling back to console.", e)
+        print(f"\n[APPROVAL REQUESTED]: {prompt_text}")
+        try:
+            response = input("Approve? (yes/no): ").lower().strip()
+            return response in ("yes", "y")
+        except EOFError:
+            return False
 
 
 def deploy_pipeline_with_ui(db_path: str, pipeline_id: str, pipeline_name: str, topology_json: str) -> str:

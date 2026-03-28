@@ -35,7 +35,8 @@ DEFAULT_REGISTRY_PATH = WORKSPACE_ROOT / "REGISTRY.md"
 # ---------------------------------------------------------------------------
 OLLAMA_REMOTE_URL    = os.environ.get("OLLAMA_REMOTE_URL", "http://192.168.1.8:11434")   # GPU server
 OLLAMA_LOCAL_URL     = os.environ.get("OLLAMA_LOCAL_URL",  "http://127.0.0.1:11434")     # Local fallback
-REMOTE_LOCAL_MODEL   = os.environ.get("REMOTE_LOCAL_MODEL", "qwen3.5:9b")               # GPU server model
+REMOTE_LOCAL_MODEL   = os.environ.get("REMOTE_LOCAL_MODEL", "ministral-3:8b")               # GPU server model
+# REMOTE_LOCAL_MODEL   = os.environ.get("REMOTE_LOCAL_MODEL", "qwen3.5:9b")               # GPU server model
 LOCAL_MODEL          = "nn-tsuzu/lfm2.5-1.2b-instruct"                                  # Local Linux model
 EMBED_MODEL          = "nomic-embed-text"
 
