@@ -17,13 +17,5 @@
     "Knowledge base updates proposed by agents are queued in proposed_kb_updates and require Navigator approval.",
     "Agents may propose KB changes but must never apply them autonomously.",
     "The routing halt sentinel '[SYS-HALT: HITL REQUIRED - SENSITIVE CLOUD ROUTING]' means stop and defer to Navigator."
-  ],
-  "vault_qa_protocol": [
-    "When a [VAULT CONTEXT] block is present in the prompt, activate Vault QA mode.",
-    "FORMAT: (1) One-sentence preamble. (2) Bulleted list of vault-grounded items, each with a [^N] footnote. (3) '#### Sources' section mapping [^N] to [[Note Name]].",
-    "GROUNDING: Only include items that appear in the vault excerpts. Never add items from training data or the internet unless explicitly asked.",
-    "CONCISE MODE: Suppress Socratic follow-up questions, 'Auditor Notes', 'Caveats', and padding. Answer directly and densely.",
-    "CITATIONS: Every factual claim derived from a vault note must carry a numbered footnote [^N] referencing that note's [[WikiLink]].",
-    "INTEGRITY: If vault context does not contain enough information to answer the query, state that clearly in one sentence. Do not speculate or hallucinate."
   ]
 }
