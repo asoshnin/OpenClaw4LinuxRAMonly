@@ -336,22 +336,46 @@ def run_agent(db_path: str, agent_id: str, task_text: str, vault_qa_result: dict
     prompt_parts.append(f"[AGENT IDENTITY]\nYou are {agent['name']} — {description}.\n")
     prompt_parts.append(f"[MEMORY CONTEXT]\n{memory_text}\n")
 
-    # [VAULT CONTEXT] — Sprint 11: injected only when vault_qa_result is provided
+    # [VAULT CONTEXT] — Sprint 11.1: Vault QA Response Protocol
     if vault_qa_result and vault_qa_result.get("context_text"):
         try:
             from obsidian_bridge import VAULT_QA_PROMPT_MAX_CHARS
         except ImportError:
             VAULT_QA_PROMPT_MAX_CHARS = 6000
         vault_context = vault_qa_result["context_text"][:VAULT_QA_PROMPT_MAX_CHARS]
-        wikilinks = ", ".join(
-            s["wikilink"] for s in vault_qa_result.get("sources", [])
+        sources = vault_qa_result.get("sources", [])
+        # Build numbered source index: [^1] → [[Note Name]]
+        source_index = "\n".join(
+            f"[^{i+1}]: {s['wikilink']} (`{s['path']}`)"
+            for i, s in enumerate(sources)
+        )
+        # Assign footnote numbers to each wikilink for the agent to reference
+        footnote_map = "\n".join(
+            f"  - Source {i+1}: {s['wikilink']}"
+            for i, s in enumerate(sources)
         )
         vault_block = (
-            "[VAULT CONTEXT]\n"
-            "The following excerpts are from your Obsidian vault, retrieved for this query.\n"
-            "When citing a source, use Obsidian wikilink format: [[Note Name]].\n\n"
-            f"{vault_context}\n\n"
-            f"Sources retrieved: {wikilinks}\n"
+            "[VAULT CONTEXT — RESPONSE PROTOCOL]\n"
+            "You have been given excerpts from the Navigator's personal Obsidian vault below.\n\n"
+            "MANDATORY RESPONSE FORMAT (Vault QA mode):\n"
+            "  1. PREAMBLE: One sentence only (e.g. 'Based on your vault, here are...').\n"
+            "  2. BODY: Bulleted list. Each bullet = one item found in the vault excerpts.\n"
+            "     Each claim that comes from a specific note MUST end with a footnote [^N].\n"
+            "  3. SOURCES FOOTER: A '#### Sources' section listing each [^N] → [[Note Name]].\n\n"
+            "GROUNDING RULES (mandatory, no exceptions):\n"
+            "  - ONLY include items, projects, or facts that appear in the vault excerpts below.\n"
+            "  - Do NOT add items from your training data, general knowledge, or the internet.\n"
+            "  - If a note mentions 'AutoResearchClaw', include it. If a note does not mention\n"
+            "    'microsoft/graphrag', do NOT include it.\n"
+            "  - If the context is insufficient to answer, say so in one sentence. Do not speculate.\n\n"
+            "CONCISE MODE (mandatory):\n"
+            "  - Suppress all Socratic follow-up questions ('Would you like me to...').\n"
+            "  - Suppress all 'Auditor Notes', 'Caveats', or 'Recommendations' sections.\n"
+            "  - Answer directly and densely. No padding.\n\n"
+            "FOOTNOTE REFERENCE TABLE (use these numbers):\n"
+            f"{footnote_map}\n\n"
+            "VAULT EXCERPTS:\n"
+            f"{vault_context}\n"
         )
         prompt_parts.append(vault_block)
 
@@ -770,16 +794,24 @@ def cmd_vault_qa(args) -> int:
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return 0
 
-    # Default: Markdown formatted output
-    wikilinks = " ".join(s["wikilink"] for s in result["sources"])
+    # Default: Markdown formatted output — Response Protocol compliant
+    sources = result["sources"]
     lines = [
         f"## Vault QA: {args.query}",
         "",
-        f"**Sources:** {wikilinks}",
+        f"*Based on {len(sources)} note(s) retrieved from your vault.*",
         "",
     ]
-    for source in result["sources"]:
-        lines.append(f"---\n### {source['wikilink']}\n{source['excerpt']}\n")
+
+    # Body excerpts with [^N] footnote markers in each section header
+    for i, source in enumerate(sources):
+        lines.append(f"---\n### {source['wikilink']} [^{i+1}]\n{source['excerpt']}\n")
+
+    # Footer: Sources map [^N] → [[Note]] (path)
+    lines.append("---")
+    lines.append("#### Sources")
+    for i, source in enumerate(sources):
+        lines.append(f"[^{i+1}]: {source['wikilink']} — `{source['path']}`")
 
     print("\n".join(lines))
     return 0

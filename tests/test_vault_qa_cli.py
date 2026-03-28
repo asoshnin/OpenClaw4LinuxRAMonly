@@ -141,8 +141,8 @@ class TestVaultQACLI:
         assert exit_code == 1
         assert "obsidian_bridge" in captured.err
 
-    def test_vault_qa_cli_sources_shown_in_markdown(self, capsys):
-        """Markdown output shows each source as a '### [[Note]]' section."""
+    def test_vault_qa_cli_sources_shown_in_markdown_with_footnotes(self, capsys):
+        """Markdown output has ### [[Note]] [^N] headers and #### Sources footer."""
         from architect_tools import cmd_vault_qa
         mock_result = _make_vault_qa_result(n_sources=3)
         args = _make_args(output_json=False)
@@ -153,6 +153,12 @@ class TestVaultQACLI:
 
         captured = capsys.readouterr()
         assert exit_code == 0
-        assert "### [[Note0]]" in captured.out
-        assert "### [[Note1]]" in captured.out
-        assert "### [[Note2]]" in captured.out
+        # Source headers with footnote markers
+        assert "### [[Note0]] [^1]" in captured.out
+        assert "### [[Note1]] [^2]" in captured.out
+        assert "### [[Note2]] [^3]" in captured.out
+        # Footer section
+        assert "#### Sources" in captured.out
+        assert "[^1]:" in captured.out
+        assert "[^2]:" in captured.out
+        assert "[^3]:" in captured.out

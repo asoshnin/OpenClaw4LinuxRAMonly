@@ -86,8 +86,8 @@ def format_kb_for_prompt(kb: dict) -> str:
     Format the knowledge base as a structured prefix for LLM prompts.
 
     The block order is fixed: security_rules → capability_boundaries →
-    epistemic_invariants. This prefix is prepended BEFORE any dynamic
-    content (memory context, task text) so rules cannot be overridden.
+    epistemic_invariants → vault_qa_protocol. This prefix is prepended BEFORE
+    any dynamic content (memory context, task text) so rules cannot be overridden.
     """
     lines = []
 
@@ -110,6 +110,13 @@ def format_kb_for_prompt(kb: dict) -> str:
         lines.append("[INVARIANTS]")
         for inv in invariants:
             lines.append(f"  - {inv}")
+        lines.append("")
+
+    vault_protocol = kb.get("vault_qa_protocol", [])
+    if vault_protocol:
+        lines.append("[VAULT QA PROTOCOL]")
+        for rule in vault_protocol:
+            lines.append(f"  - {rule}")
         lines.append("")
 
     return "\n".join(lines)
