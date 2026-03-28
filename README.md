@@ -45,7 +45,7 @@ Navigator (Human)
 - **Static KB:** Security rules are committed JSON injected as the first prompt block — agents cannot override them through task text
 - **Context Guard:** All LLM calls are middle-truncated at 12,000 characters
 
-For the full technical reference, see [`docs/2026-03-27__12-50_current_state.md`](docs/2026-03-27__12-50_current_state.md).
+For the full technical reference, see [`docs/architecture.md`](docs/architecture.md).
 
 ---
 
@@ -160,11 +160,17 @@ All 94 tests run without a live Ollama or Obsidian instance (all HTTP calls are 
 
 ---
 
-## Backlog & Roadmap
+## Documentation & CLI Reference
 
-Active sprint and future phases tracked in:
-- [`_Development/OpenClaw/2026-03-27_backlog.md`](_Development/OpenClaw/2026-03-27_backlog.md)
-- [`_Development/OpenClaw/Sprint_7_ObsidianSync/`](_Development/OpenClaw/Sprint_7_ObsidianSync/) *(latest completed)*
+| Document | Description |
+|---|---|
+| [docs/getting_started.md](docs/getting_started.md) | First-time user guide |
+| [docs/how_to_create_agent.md](docs/how_to_create_agent.md) | Create a custom agent end-to-end |
+| [docs/linux_obsidian_setup.md](docs/linux_obsidian_setup.md) | Obsidian vault sync setup |
+| [docs/glossary.md](docs/glossary.md) | Plain-English term definitions |
+| [docs/architecture.md](docs/architecture.md) | System architecture & module reference |
+| [TOOLS.md](TOOLS.md) | Complete CLI subcommand reference |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Design constraints & contribution guide |
 
 ---
 
