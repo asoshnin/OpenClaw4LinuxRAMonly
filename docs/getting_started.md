@@ -6,7 +6,7 @@ Welcome. This guide walks you through OpenClaw from zero — no prior AI framewo
 
 ## 1. What is OpenClaw?
 
-OpenClaw is a local-first AI agent runtime for Linux. It lets you create named AI agents, give them tasks, and keep a complete audit trail of what they did — all without sending sensitive data to the cloud. The key difference from tools like LangChain or AutoGen: **nothing consequential happens without your explicit approval**. A native OS dialog appears and waits for you to click Yes or No before any pipeline is deployed.
+OpenClaw is a local-first AI agent runtime for Linux. It lets you create named AI agents, give them tasks, and keep a complete audit trail of what they did — all without sending sensitive data to the cloud. The key difference from tools like LangChain or AutoGen: **nothing consequential happens without your explicit approval**. A native OS dialog appears and waits for you to click Yes or No before any workflow is deployed.
 
 See the [Glossary](glossary.md) if any terms below are unfamiliar.
 
@@ -21,7 +21,7 @@ An agent is a named AI persona stored in the database. Think of it like a job ro
 ## 3. What is the Navigator role?
 
 **You.** The Navigator is the human operator who:
-- Approves or rejects pipeline deployments (via GUI popup)
+- Approves or rejects workflow deployments (via GUI popup)
 - Reviews and approves proposed changes to the knowledge base
 - Decides what data stays local vs. what can go to the cloud
 
@@ -87,7 +87,7 @@ What to look for:
 
 ## 6. Understanding the HITL popup
 
-When a pipeline deployment is triggered, a native OS dialog appears:
+When a workflow deployment is triggered, a native OS dialog appears:
 
 ```
 ┌─────────────────────────────────────┐
@@ -100,7 +100,7 @@ When a pipeline deployment is triggered, a native OS dialog appears:
 └─────────────────────────────────────┘
 ```
 
-- **Click Yes**: A Burn-on-Read token is generated and immediately consumed internally. The pipeline is deployed and the action is logged.
+- **Click Yes**: A Burn-on-Read token is generated and immediately consumed internally. The workflow is deployed and the action is logged.
 - **Click No**: A `PermissionError` is raised. Nothing is written. The attempt is logged.
 
 The dialog is non-dismissable — you cannot close it without clicking Yes or No. This ensures every deployment is an explicit decision.
@@ -109,7 +109,7 @@ The dialog is non-dismissable — you cannot close it without clicking Yes or No
 
 ## 7. Reading REGISTRY.md
 
-`~/.openclaw/workspace/REGISTRY.md` is a human-readable snapshot of all agents and pipelines in the system. Regenerate it any time:
+`~/.openclaw/workspace/REGISTRY.md` is a human-readable snapshot of all agents and workflows in the system. Regenerate it any time:
 
 ```bash
 python3 openclaw_skills/librarian/librarian_ctl.py refresh-registry \

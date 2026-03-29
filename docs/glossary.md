@@ -1,97 +1,57 @@
-# OpenClaw Glossary
+# OpenClaw Glossary (V2 Standard)
 
 A plain-English reference for all OpenClaw-specific terminology. No prior AI/ML knowledge required.
 
 ---
 
-## Navigator
+## The Entity Hierarchy
 
-**You.** The human operator who owns the system and is the sole authority for approving any consequential action. The Navigator is never replaced by an agent — all deployment decisions gate on explicit Navigator approval. If you are running OpenClaw on your machine, you are the Navigator.
-
----
-
-## Agent
-
-A named AI persona stored in `factory.db` with a specific role, capability set, and version. An agent is not a running process — it is a record in the database that the system activates when a task is sent to it. Two agents ship by default:
-
-- **`kimi-orch-01`** (Mega-Orchestrator): Coordinates tasks, manages pipelines, routes inference.
-- **`lib-keeper-01`** (The Librarian): Manages files, database records, and semantic memory.
-
-You can register your own agents using `librarian_ctl.py register-agent`.
+- **Assistant:** The primary user-facing interface. An orchestration of Agents and Workflows to solve specific domains (e.g., DeepResearch Assistant).
+- **Agent:** A digital persona/role with a designated capability set (e.g., Librarian, Architect).
+- **Skill:** A capability package (e.g., `browser-automation`).
+- **Tool:** An atomic function call *within* a Skill (e.g., `browser_open`, `click`).
+- **Workflow:** A versioned, reproducible sequence of steps followed by an Assistant.
 
 ---
 
-## Airlock
+## System Primitives & Roles
 
-A security check that prevents any file operation from writing outside the designated workspace folder (`~/.openclaw/workspace` by default). Every file path is validated with `os.path.realpath()` + prefix-collision guard before any `open()` call. An attempt to write outside will raise `PermissionError: Airlock Breach` and the operation is aborted.
-
-**Why it matters:** Without the Airlock, a malicious or confused agent could potentially overwrite files anywhere on your system. The Airlock makes this structurally impossible.
-
----
-
-## HITL Gate
-
-**Human-in-the-Loop Gate.** A hard stop in the code that blocks execution and waits for you to explicitly click **Yes** or **No** in a native OS dialog before a pipeline is deployed. "Bolting on" approval as a UI suggestion is not enough — in OpenClaw, the pipeline deployment function _cannot complete_ without the Navigator's click.
-
-HITL gates are implemented in `deploy_pipeline_with_ui()` using Python's `tkinter` library. No browser, no web app, no remote call — just your local OS.
+- **Navigator (You):** The human operator who owns the system and is the sole authority for approving any consequential action. The Navigator is never replaced by an agent — all deployment decisions gate on explicit Navigator approval.
+- **The Librarian:** The designated system agent (`lib-keeper-01`) responsible for managing persistent state, including the database, Vector Archive, Registry, and semantic memory.
+- **Red Team Auditor:** A ruthless critic persona focused on quality assessments. All high-stakes artifacts must pass through the Auditor pipeline (Status: Assessment -> Findings -> Recommendations).
 
 ---
 
-## Burn-on-Read Token
+## Evolution & Resilience Protocols
 
-A one-time cryptographic token used to prove Navigator approval. The key property: **the token file is deleted before the comparison is evaluated**. This means:
-
-- If you approve, the token is consumed and the action proceeds.
-- If someone tries to replay the same approval later, the file is already gone — the action is blocked.
-- Even a failed comparison burns the token, so there is no window to exploit.
-
-Token files are stored at `~/.openclaw/workspace/.hitl_token` and are ephemeral by design.
+- **Epistemic Backlog:** A database-backed registry of system gaps (in `factory.db`) for recursive self-evolution. Agents flag functional deficiencies to be addressed later.
+- **Just-in-Time Help (JITH):** A resilience protocol where agents dynamically discover CLI syntax via `--help` discovery at runtime. No hardcoded flags are permitted for external scripts.
+- **Socratic Improvement:** Continuous refinement and critical questioning applied recursively to early solutions before finalizing artifacts.
+- **Epistemic Sovereignty:** The design principle that the human operator stays in full control of what the AI knows and does.
 
 ---
 
-## Faint Path
+## Security & Architecture Concepts
 
-A semantically similar memory retrieved from past sessions to give agents relevant context. When an agent runs a task, the system searches the Vector Archive for past logs or notes that are thematically similar (using 768-dimensional embeddings from Ollama's `nomic-embed-text` model). These "faint traces" of past work are injected into the agent's context window.
-
-The name is intentionally poetic: unlike explicit memory (a direct lookup), faint paths are _discovered_ by semantic similarity — the system finds relevant past experience even when there is no exact keyword match.
-
----
-
-## The Librarian
-
-The system agent (`lib-keeper-01`) responsible for managing persistent state: the database, the Vector Archive, the Agent Registry, and semantic memory. The Librarian is the only component permitted to write to `factory.db` and to the vector tables. It is a protected system agent (`is_system=1`) and cannot be torn down.
+- **Airlock:** A security check that prevents any file operation from writing outside the designated workspace folder (`~/.openclaw/workspace` or equivalent symlinked buffer).
+- **HITL Gate (Human-in-the-Loop):** A hard stop blocking execution to wait for explicit native OS dialog approval before a workflow or sensitive action is deployed.
+- **Burn-on-Read Token:** A one-time cryptographic token used to prove Navigator approval. The token file is destroyed immediately upon reading, structurally preventing replay attacks.
+- **Faint Path:** A semantically similar memory retrieved from past sessions to inject relevant historical context into an agent's reasoning.
+- **Knowledge Base:** The static configuration file (`knowledge_base.json`) enforcing core boundaries. Agents may propose changes, but only the Navigator approves them.
 
 ---
 
-## Epistemic Sovereignty
+## Terminology Migration Map (Legacy -> V2 Standard)
 
-The design principle that **you stay in full control of what the AI knows and does at all times**. In practice this means:
-
-- No agent can update its own knowledge base rules — only the Navigator can approve KB changes.
-- No sensitive data can reach the cloud — the LLM router enforces this at the code level.
-- All agent memory passes through the Epistemic Scrubber (removing active instructions, PII, and injected commands) before it is stored.
-- The Vector Archive never stores raw logs — only distilled, neutralised summaries.
-
----
-
-## Knowledge Base
-
-A committed JSON file (`openclaw_skills/knowledge_base.json`) containing security rules, capability boundaries, and epistemic invariants. It is injected as the **first block** in every agent prompt — before any memory, identity, or task content. Agents cannot override the knowledge base through task text.
-
-Agents may *propose* rule changes via `submit_kb_proposal()`. The Navigator *applies* them via `approve_kb_proposal()` with a Burn-on-Read HITL token.
-
----
-
-## Registry
-
-`REGISTRY.md` — a human-readable Markdown file automatically generated by `librarian_ctl.py refresh-registry`. It lists all registered agents and active pipelines. Never edit it by hand — it is a derived artifact of `factory.db`.
+- **Pipeline** -> **Workflow**
+- **Agentic Pipeline** -> **Assistant Workflow**
+- **Tool (generic)** -> **Skill (package) / Tool (atomic)**
 
 ---
 
 ## Why These Names?
 
-OpenClaw is designed to be a *hardened agentic operating system*, not a framework. The naming reflects this:
-
+OpenClaw is designed to be a *hardened agentic operating system*. The naming reflects this:
 - **Navigator** (not "user") — you steer; the agents execute.
 - **Airlock** (from spacecraft design) — a controlled barrier between inside and outside.
 - **Faint Path** (from navigation) — a barely visible trail that leads somewhere meaningful.

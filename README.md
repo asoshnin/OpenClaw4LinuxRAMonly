@@ -1,4 +1,4 @@
-# OpenClaw for Linux
+# OpenClaw for Linux · v2026.3.28
 
 ![Tests](https://github.com/asoshnin/OpenClaw4LinuxRAMonly/actions/workflows/test.yml/badge.svg)
 
@@ -33,13 +33,13 @@ Navigator (Human)
 ```
 
 **Three memory layers:**
-- **The Map:** `REGISTRY.md` — human-readable agent/pipeline registry (auto-generated)
-- **The State:** `factory.db` — SQLite WAL-mode relational store (agents, pipelines, audit logs)
+- **The Map:** `REGISTRY.md` — human-readable agent/workflow registry (auto-generated)
+- **The State:** `factory.db` — SQLite WAL-mode relational store (agents, workflows, audit logs)
 - **The Archive:** `sqlite-vec` 768-dim vectors — semantic memory for Faint Path retrieval
 
 **Security primitives:**
 - **Airlock:** All file ops are scoped to `OPENCLAW_WORKSPACE` via `os.path.realpath()` + `os.sep` prefix-collision guard
-- **HITL Gate:** Every pipeline deployment requires a native GUI popup (or terminal prompt) confirmation from the Navigator
+- **HITL Gate:** Every workflow deployment requires a native GUI popup (or terminal prompt) confirmation from the Navigator
 - **Burn-on-Read token:** The HITL token is deleted *before* the comparison — preventing replay attacks
 - **HITL-Guarded Router:** Sensitive + cloud routing is unconditionally blocked with `[SYS-HALT]` — cloud never called, every decision audited
 - **Static KB:** Security rules are committed JSON injected as the first prompt block — agents cannot override them through task text
@@ -117,6 +117,49 @@ python3 openclaw_skills/architect/architect_tools.py vault-health-check \
 
 ---
 
+## Multi-Project Silos (`factory-init`) — v2026.3.28
+
+OpenClaw now supports **isolated project silos** running in parallel on the same machine.
+Each silo is a self-contained directory with its own `.factory_anchor`, `project.db`, `docs/`, and `memory/`.
+
+```bash
+# Initialize a new project silo
+python3 openclaw_skills/architect/project_init.py ./my-project \
+  --name "My Research Project" \
+  --global-db "$HOME/.openclaw/workspace/factory.db"
+
+# The silo is now registered in the Global Hub and ready to use
+# config.find_project_root() will discover it automatically
+```
+
+**How it works:**
+- `config.find_project_root()` walks upward from CWD until it finds `.factory_anchor`
+- Each silo gets an isolated `workspace/project.db` with its own `sprints`/`tasks` schema
+- The Global Hub `factory.db` maintains a `projects` table linking all silos (with parent lineage)
+- Path uniqueness is enforced via `os.path.realpath()` — trailing-slash variations resolve to the same record
+- An existing silo cannot be overwritten without `--force`
+
+---
+
+## JITH: Just-in-Time Help Protocol (Librarian) — v2026.3.28
+
+The Librarian discovers CLI flags at runtime instead of relying on hardcoded documentation that drifts.
+
+```python
+from openclaw_skills.librarian.jith_discovery import get_cli_capabilities, validate_invocation
+
+# Discover what flags 'architect vault-qa' supports right now
+caps = get_cli_capabilities(['architect', 'vault-qa'])
+print(caps['options'])  # {'--query': {...}, '--sensitive': {...}, ...}
+
+# Validate before executing — raises RuntimeError([EPISTEMIC_GAP]) if flag missing
+validate_invocation(['architect', 'vault-qa'], ['--query', '--sensitive'])
+```
+
+**Security model:** All inputs are validated against a `VERB_ALLOWLIST`. Injection characters (`;`, `|`, `&` etc.) are always rejected. Results are cached atomically (write-to-`.tmp` → `os.replace()`) with 24-hour TTL and version-fingerprint invalidation.
+
+---
+
 ## Security Model
 
 ### Airlock
@@ -129,7 +172,7 @@ if not (target_abs == base_dir or target_abs.startswith(base_dir + os.sep)):
 ```
 
 ### HITL Gate
-No pipeline is deployed without an explicit human approval popup:
+No workflow is deployed without an explicit human approval popup:
 ```python
 # The agent calls this — it blocks until the Navigator clicks Yes/No
 deploy_pipeline_with_ui(db_path, pipeline_id, pipeline_name, topology_json)
@@ -165,7 +208,7 @@ Agents may **propose** rule changes via `submit_kb_proposal()`. The Navigator **
 pytest tests/ -v
 ```
 
-All 179 tests run without a live Ollama or Obsidian instance (all HTTP calls are mocked). Coverage: Airlock path validation, symlink traversal attacks, sibling-prefix collision, Burn-on-Read token lifecycle, DB init round-trip, agent runner, dynamic LLM router (all 4 routing outcomes), knowledge base HITL gate, self-healing JSON circuit breaker, scoped epistemic scrubber, Obsidian API safety invariants (Context Guard, Sensitivity Gate), vault intelligent routing (dynamic domain discovery, duplicate-prefix detection), YAML schema validation, Johnny.Decimal taxonomy compliance, and autonomous vault health scan.
+All **277 tests** run without a live Ollama or Obsidian instance (all HTTP calls are mocked). Coverage includes: Airlock path validation, symlink traversal attacks, sibling-prefix collision, Burn-on-Read token lifecycle, DB init round-trip, agent runner, dynamic LLM router (all 4 routing outcomes), knowledge base HITL gate, self-healing JSON circuit breaker, scoped epistemic scrubber, Obsidian API safety invariants, vault intelligent routing, YAML schema validation, Johnny.Decimal taxonomy compliance, autonomous vault health scan, JITH security/recursion/idempotency/concurrency, backlog sync marker assertion + size-guard + idempotency, Flash-tier zero-preamble + JSON circuit-breaker + stop-sequence, and Multi-Project anchor discovery + silo isolation.
 
 ---
 
@@ -176,8 +219,9 @@ All 179 tests run without a live Ollama or Obsidian instance (all HTTP calls are
 | [docs/getting_started.md](docs/getting_started.md) | First-time user guide |
 | [docs/how_to_create_agent.md](docs/how_to_create_agent.md) | Create a custom agent end-to-end |
 | [docs/linux_obsidian_setup.md](docs/linux_obsidian_setup.md) | Obsidian vault sync setup |
-| [docs/glossary.md](docs/glossary.md) | Plain-English term definitions |
+| [docs/glossary.md](docs/glossary.md) | Plain-English term definitions (V2 Glossary) |
 | [docs/architecture.md](docs/architecture.md) | System architecture & module reference |
+| [docs/VISION.md](docs/VISION.md) | Strategic roadmap & Wave planning |
 | [TOOLS.md](TOOLS.md) | Complete CLI subcommand reference |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Design constraints & contribution guide |
 

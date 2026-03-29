@@ -3,6 +3,35 @@
 All notable changes are listed by Sprint. This project follows a sprint-based delivery model documented in `_Development/OpenClaw/`.
 
 ---
+## Wave 1 Foundation + Wave 1.5 Context Isolation (2026-03-29) — v2026.3.28
+
+**277 tests passing** (+98 from Wave 0 baseline of 179).
+
+### Wave 1: Foundation Hardening
+
+- **BL-00 / BL-00c (Sprint Infrastructure):** Created `epistemic_backlog`, `sprints`, and `tasks` tables in `factory.db` via `migrate_bl00c.py`. Seeded 4 Strategic Waves (Foundation, Perception, Evolution, Governance) and 26 backlog tasks with `priority` and `source_doc` columns. Verified read/write integrity via `tests/test_bl00_functional.py`.
+
+- **LIB-01 (JITH Protocol):** Implemented `openclaw_skills/librarian/jith_discovery.py` — a recursive CLI capability discovery engine. Security allowlist (`VERB_ALLOWLIST`) blocks all non-OpenClaw verbs. Injection characters and path traversal are always rejected (`shell=False` universally). Results cached atomically (`.tmp` → `os.replace()`) with 24-hour TTL and version-fingerprint invalidation. `validate_invocation()` emits `[EPISTEMIC_GAP]` reports for missing flags. 19 tests in `tests/test_lib01_jith.py`.
+
+- **LIB-02 (Backlog Sync Utility):** Implemented `openclaw_skills/librarian/sync_backlog.py` — fail-safe HTML-marker injection model synchronizing `factory.db` task statuses to `_Development/2026-03-29_current_backlog_update.md`. Features: unique marker assertion (exit 1 on violation), 20% size-guard, dry-run mode, atomic writes, and `update_task_status()` enforcing the Verified-Completion Invariant (non-empty `test_summary` required). 12 tests in `tests/test_lib02_sync.py`.
+
+- **PR-01 + PR-02 (Flash-Schema Unified Protocol):** Added `generate_flash_prompt()` to `openclaw_skills/prompt_architect/prompt_architect_tools.py`. Features: Socratic tier assessment (FLASH/PRO routing), No-Preamble instruction block, schema-aware stop sequence, bloat stripping, JSON circuit-breaker (retry loop with repair prompt), Pydantic-style schema validator (no external deps), and Sovereign Safety Guard (all Flash outputs unconditionally scrubbed by `safety_engine.py`). 33 tests in `tests/test_inference_hardening.py`.
+
+- **V2 Glossary Synchronization:** Global semantic migration from Pipeline → Workflow across all documentation. Steering files (`.kiro/`), docs, README, and SKILL.md all aligned to the V2 semantic model.
+
+### Wave 1.5: Multi-Project Context Isolation
+
+- **PR-05 (Context Switcher):** Implemented `find_project_root()` and `get_project_paths()` in `openclaw_skills/config.py`. Anchor-based upward recursion discovers the nearest `.factory_anchor` file; falls back to `OPENCLAW_WORKSPACE` env var, then `_SOURCE_ROOT`. `GLOBAL_DB_PATH`, `DOCS_DIR`, `MEMORY_DIR` added as convenience aliases. `.factory_anchor` created at the Global Hub root. Steering files (`structure.md`, `sprint-workflow.md`) rewritten with Multi-Project Silo architecture and SQL-First authority invariants. 15 tests in `tests/test_pr05_context_switcher.py`.
+
+- **PR-06 (Global Project Registry & `factory-init`):** Added `projects` table to `factory.db` via `migrate_db.py` step 9 (`ON DELETE SET NULL` for parent lineage). Extracted shared schema DDL into `openclaw_skills/librarian/db_utils.py` (`initialize_project_schema()`). Built `openclaw_skills/architect/project_init.py` — `factory-init` CLI with pre-flight guard (abort on existing `project.db`/anchor unless `--force`), `realpath` normalization, directory provisioning, and Global Hub registration with parent validation. 16 tests in `tests/test_pr06_project_registry.py`.
+
+---
+## Wave 1 Foundation (2026-03-29) — Epistemic Backlog Migration
+
+- BL-00 Migration Complete: Verified the functional constraints and read/write integrity of the `epistemic_backlog` table.
+
+---
+
 ## Sprint 11 (2026-03-28) — The Semantic Bridge
 
 - Added `ObsidianBridge.search_vault(query, limit=5)`: calls `GET /search/simple/` Obsidian Local REST API endpoint; returns top-N vault-relative paths ordered by score; query URL-encoded (`%20` not `+`); limit clamped to `[1, 10]`

@@ -61,7 +61,7 @@ Lists all currently registered agents in your `factory.db`.
 ## 4. Security & HITL
 
 **Human-In-The-Loop (HITL)** is maintained even on mobile:
-- If a task requires a pipeline deployment, the system will **pause** and wait for approval.
+- If a task requires a workflow deployment, the system will **pause** and wait for approval.
 - You will receive a Telegram message with an `[APPROVE]` button. 
 - **Security Constraint:** Consequential actions still require the local OS dialog to be confirmed if you are at your machine, or a specific mobile-authorization token if configured.
 

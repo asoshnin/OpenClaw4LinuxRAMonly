@@ -13,7 +13,7 @@ OpenClaw is a hardened, self-evolving agentic operating system built for Linux x
 
 # Configuration (Sprint 5+)
 
-- **Never hardcode workspace paths.** The workspace root is resolved from the `OPENCLAW_WORKSPACE` environment variable, defaulting to `~/.openclaw/workspace`.
+- **Never hardcode workspace paths.** The Source of Truth is `/home/alexey/openclaw-inbox/agentic_factory/`. The `~/.openclaw/workspace` directory is a **Symlinked Buffer**. Memory and Docs folders are linked bidirectionally between the two.
 - **Single source of truth:** `openclaw_skills/config.py` defines `WORKSPACE_ROOT`, `TOKEN_FILE`, `DEFAULT_DB_PATH`, and `DEFAULT_REGISTRY_PATH`. All other modules import from here.
 - Both `librarian_ctl.py` and `architect_tools.py` import `WORKSPACE_ROOT` from `config`. No path string literals in those files.
 
@@ -28,6 +28,7 @@ OpenClaw is a hardened, self-evolving agentic operating system built for Linux x
          raise PermissionError(f"Airlock Breach: {target_abs} is outside {base_dir}")
      ```
    - Never use a bare `startswith(base_dir)` without the `os.sep` guard.
+   - **Constraint:** Ensure `openclaw_skills/` remains "Invisible" to the execution workspace logic.
 3. **Burn-on-Read Token**: Handled by the UI wrapper; token is deleted before comparison.
 4. **Context Guard**: Logs passed to any LLM call must be truncated to 12,000 characters maximum before the call.
 5. **Epistemic Scrubber**: All *externally-ingested* data entering the Vector Archive must pass through `safety_engine.py`. Internal audit logs may be embedded directly.
@@ -118,6 +119,23 @@ OpenClaw is a hardened, self-evolving agentic operating system built for Linux x
 **`architect_tools.py` subcommands (Sprint 9):** `vault-route`, `vault-validate`, `vault-check-taxonomy`, `vault-health-check`. All follow exit codes 0=success, 1=error, 2=validation failure.
 
 **`VAULT_TOOLS_AVAILABLE` guard:** vault_tools is imported with a graceful try/except in `architect_tools.py`. All four command handlers check `VAULT_TOOLS_AVAILABLE` before executing.
+
+# Managed Browser Policy (v2026.3.28)
+
+- Legacy "Extension Relays" are removed. We use CDP attachment.
+- **Protocol:** `OPEN URL` -> `SNAPSHOT --INTERACTIVE` -> `ACT (using e1, e2 refs)`.
+- No CSS selectors allowed. 
+- Agents MUST use `openclaw browser snapshot --interactive` to get element references (`e1`, `e2`) before clicking or typing.
+
+# Strategic Vision & Self-Evolution
+
+- **Recursive Self-Evolution:** The system operates on an atomic synthesis loop for constant capability upgrades.
+- **Invariant:** Agents MUST identify system deficiencies using the `[EPISTEMIC_GAP]` tag.
+- **Invariant:** All high-stakes artifacts MUST pass through the **Red Team Auditor** (Status: Assessment -> Findings -> Recommendations).
+
+# Database Backlog Migration (BL-00)
+
+- The `factory.db` database contains an `epistemic_backlog` table for automated tracking and reporting of identified gaps.
 
 # Technology Stack
 

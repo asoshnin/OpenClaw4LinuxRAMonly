@@ -36,8 +36,9 @@ Every pipeline deployment MUST use `deploy_pipeline_with_ui(db_path, pipeline_id
 
 ```python
 def _safe_path(workspace_root: str, relative_path: str) -> str:
-    resolved = os.path.realpath(os.path.join(workspace_root, relative_path))
-    if not resolved.startswith(os.path.realpath(workspace_root)):
+    base = os.path.realpath(workspace_root)
+    resolved = os.path.realpath(os.path.join(base, relative_path))
+    if not (resolved == base or resolved.startswith(base + os.sep)):
         raise PermissionError(f"Airlock breach: {resolved} is outside workspace")
     return resolved
 ```

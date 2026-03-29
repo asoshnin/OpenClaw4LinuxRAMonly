@@ -24,10 +24,10 @@ except ImportError:
 
 # Resolve workspace config — never hardcode paths
 try:
-    from config import WORKSPACE_ROOT, TOKEN_FILE, OLLAMA_URL, LOCAL_MODEL, get_active_ollama_url, INFERENCE_ALERT
+    from config import WORKSPACE_ROOT, TOKEN_FILE, OLLAMA_URL, LOCAL_MODEL, get_active_ollama_url, INFERENCE_ALERT, get_inference_tier_order, call_inference
 except ImportError:
     sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-    from config import WORKSPACE_ROOT, TOKEN_FILE, OLLAMA_URL, LOCAL_MODEL, get_active_ollama_url, INFERENCE_ALERT
+    from config import WORKSPACE_ROOT, TOKEN_FILE, OLLAMA_URL, LOCAL_MODEL, get_active_ollama_url, INFERENCE_ALERT, get_inference_tier_order, call_inference
 
 # ObsidianBridge — optional dependency (Sprint 7); graceful if not yet installed
 try:
@@ -284,7 +284,7 @@ def teardown_pipeline(db_path: str, pipeline_id: str) -> str:
             f"Skipped: {', '.join(skipped_agents) if skipped_agents else 'None'}.")
 
 
-def run_agent(db_path: str, agent_id: str, task_text: str, vault_qa_result: dict = None) -> str:
+def run_agent(db_path: str, agent_id: str, task_text: str, vault_qa_result: dict = None, is_sensitive: bool = False) -> str:
     """[DES-S5-03 / DES-S6-02] Execute a task attributed to a registered agent.
 
     Flow (Sprint 11 prompt order per SKILL.md):
@@ -410,37 +410,31 @@ def run_agent(db_path: str, agent_id: str, task_text: str, vault_qa_result: dict
     prompt_parts.append(f"[TASK]\n{task_text}")
     prompt = "\n".join(prompt_parts)
 
-    # Step 5: Call Ollama — tiered: GPU server → local → INFERENCE_ALERT halt
-    probe = get_active_ollama_url()
-    if probe is None:
-        logger.warning("run_agent: both Ollama servers offline — returning INFERENCE_ALERT.")
-        return INFERENCE_ALERT
-    active_url, active_model = probe
+    # Step 5: Call Inference — Tiered (Cloud / GPU / CPU) with Airlock Guard
+    tiers = get_inference_tier_order(agent_id)
+    response = None
+    
+    for tier, model in tiers:
+        if tier == 'cloud':
+            if is_sensitive:
+                logger.info("run_agent: Skipping cloud tier for '%s' (Airlock: task is sensitive).", agent_id)
+                continue
+            if not os.environ.get("GEMINI_API_KEY"):
+                logger.warning("run_agent: Skipping cloud tier for '%s' (GEMINI_API_KEY not set).", agent_id)
+                continue
+                
+        try:
+            response = call_inference(tier=tier, model=model, prompt=prompt, is_sensitive=is_sensitive)
+            if response:
+                logger.debug("run_agent: Inference succeeded at tier '%s' (model: %s)", tier, model)
+                break
+        except Exception as e:
+            logger.warning("run_agent: Inference failed at tier '%s' (model: %s) - %s", tier, model, e)
+            continue
 
-    payload = json.dumps({
-        "model": active_model,
-        "prompt": prompt,
-        "stream": False,
-    }).encode("utf-8")
-    req = urllib.request.Request(
-        f"{active_url}/api/generate",
-        data=payload,
-        headers={"Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=600.0) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
-            response = result.get("response", "").strip()
-            if not response:
-                raise RuntimeError(
-                    f"Ollama returned an empty response for model '{active_model}'. "
-                    "Ensure the model is pulled: ollama pull " + active_model
-                )
-    except urllib.error.URLError as e:
-        raise RuntimeError(
-            f"Ollama unreachable at {active_url}: {e}. "
-            "Ensure Ollama is running: ollama serve"
-        ) from e
+    if not response:
+        logger.warning("run_agent: All inference tiers failed or were skipped — returning INFERENCE_ALERT.")
+        return INFERENCE_ALERT
 
     # 5. Audit log (truncated to 500 chars — protects audit table size)
     valid_db = validate_path(db_path)

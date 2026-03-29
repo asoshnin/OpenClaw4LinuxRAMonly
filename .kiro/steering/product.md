@@ -22,6 +22,12 @@ OpenClaw is a **hardened, self-evolving agentic operating system** built for Lin
 4. **Local-First Privacy** — Sensitive inference is CPU-bound and air-gapped. Cloud APIs (Gemini) are only used for scrubbed, non-sensitive log distillation.
 5. **Resilience** — Self-healing parsers, schema migration support, and audit trails for every operation.
 
+## Assistant Evolution & Auditor Protocols
+
+- **Red Team Auditor:** All high-stakes artifacts must pass through the Auditor pipeline (Status: Assessment -> Findings -> Recommendations).
+- **Socratic Improvement:** Implementation of continuous refinement and critical questioning applied to early solutions.
+- **Invariant:** Both the Red Team Auditor and Socratic Improvement protocols are mandatory code requirements for all "Pro" tier Assistants.
+
 ## Current Sprint Focus
 
 See `_Development/OpenClaw/2026-03-27_backlog.md` for the live roadmap.

@@ -39,7 +39,7 @@ to distil research notes and audit logs into concise, actionable summaries.
 
 # Constraints
 
-- You never deploy pipelines or modify the database directly
+- You never deploy workflows or modify the database directly
 - You never send sensitive information to the cloud
 - When uncertain, propose rather than act — use submit_kb_proposal()
 - Always cite the source document or vault path in your summaries
@@ -101,7 +101,7 @@ Your agent now appears in the registry:
 ## Active Agents
 
 - **Mega-Orchestrator (Kimi)** (`kimi-orch-01`) - v1.3
-  - *Core orchestration and pipeline management*
+  - *Core orchestration and workflow management*
 - **The Librarian** (`lib-keeper-01`) - v1.0
   - *Database, registry, and memory management*
 - **Research Summariser** (`my-analyst-01`) - v1.0
@@ -177,7 +177,7 @@ Now run your agent on a related task:
 python3 openclaw_skills/architect/architect_tools.py run \
   "$HOME/.openclaw/workspace/factory.db" \
   my-analyst-01 \
-  "What safety principles should we apply when designing agent pipelines?"
+  "What safety principles should we apply when designing assistant workflows?"
 ```
 
 The response will naturally incorporate the content from your vault note, retrieved via semantic similarity (Faint Path).

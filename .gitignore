@@ -3,6 +3,8 @@ workspace/
 database/*.db
 database/*.db-wal
 database/*.db-shm
+*.tmp
+jith_cache.json
 
 # === Security ===
 .env

@@ -4,17 +4,41 @@ inclusion: manual
 
 # Sprint Workflow & Development Process
 
-## Sprint Structure
+## SQL-First Status Authority
 
-Each sprint lives in `_Development/OpenClaw/Sprint_N_Name/` and contains three files following the Kiro spec pattern:
+> **Invariant:** The `tasks` and `sprints` tables in `factory.db` are the **master
+> authority** for all workflow status. Flat markdown backlogs (`tasks.md`, backlog `.md`
+> files) are **read-only human mirrors** — they are synced *from* the DB by
+> `sync_backlog.py`, never the reverse.
 
-| File | Purpose |
-|---|---|
-| `requirements.md` | User stories + acceptance criteria for the Navigator |
-| `design.md` | Technical architecture, sequence diagrams, component design |
-| `tasks.md` | Discrete, trackable implementation tasks with status |
+**Task completion lifecycle:**
+1. Code written.
+2. Test suite passes (demonstrated, not assumed).
+3. `tasks.status` updated to `complete` in `factory.db` with non-empty `test_summary`.
+4. `sync_backlog.py` regenerates the Markdown mirror.
+5. For high-stakes items: Navigator provides explicit HITL sign-off.
 
-## Completed Sprints
+## Wave-Based Sprint Structure
+
+Sprints are now organized as **Strategic Waves** (recorded in the `sprints` table):
+
+| Wave | Name | Focus |
+|---|---|---|
+| 1 | Wave 1 Foundation | DB schema, prompt hardening, JITH primitives |
+| 2 | Wave 2 Perception | Semantic Bridge, Red Team Auditor quality gate |
+| 3 | Wave 3 Evolution | Persona Builder, coding stack, tiered inference |
+| 4 | Wave 4 Governance | Marketplace, scaling, UI dashboard, OSS readiness |
+
+Tasks belonging to a wave are stored in `tasks` with a `sprint_id` FK to `sprints.id`.
+
+## Legacy File-Based Sprint Pattern (Deprecated)
+
+The old `_Development/OpenClaw/Sprint_N_Name/` directory pattern with `requirements.md`,
+`design.md`, and `tasks.md` files is **deprecated** for active tracking. These files may
+still be created for planning documentation but must NOT be treated as authoritative for
+task status. Use the DB.
+
+## Completed Legacy Sprints (Historical Reference)
 
 | Sprint | Name | Status |
 |---|---|---|
@@ -24,32 +48,28 @@ Each sprint lives in `_Development/OpenClaw/Sprint_N_Name/` and contains three f
 | Sprint 3.5 | Resilience | ✅ Complete |
 | Sprint 4 | Repo Cleansing | ✅ Complete |
 
-## Active Backlog
+## Querying Active Work (SQL-First)
 
-See `#[[file:_Development/OpenClaw/2026-03-27_backlog.md]]` for the live roadmap.
-
-**Next planned sprints:**
-- **Sprint 5**: Dynamic LLM Router (HITL-Guarded)
-- **Sprint 6**: Static KB Injection
-- **Sprint 7**: Self-Healing Parsers
-
-## Task Status Conventions (tasks.md)
-
-```
-- [ ] Task not started
-- [~] Task in progress  
-- [x] Task complete
-- [!] Task blocked — describe blocker inline
+```bash
+# Show all in-progress tasks
+python3 -c "
+import sqlite3
+conn = sqlite3.connect('workspace/factory.db')
+for row in conn.execute(\"SELECT t.id, t.domain, t.status, s.name FROM tasks t JOIN sprints s ON t.sprint_id=s.id WHERE t.status NOT IN ('complete','failed') ORDER BY s.id, t.id\"):
+    print(row)
+conn.close()
+"
 ```
 
-## Creating a New Sprint
+## Creating a New Task
 
-1. Create directory: `_Development/OpenClaw/Sprint_N_Name/`
-2. Create `requirements.md` — define user stories with acceptance criteria
-3. Create `design.md` — architecture decisions, sequence diagrams, data flow
-4. Create `tasks.md` — discrete tasks derived from design
-5. Update `_Development/OpenClaw/YYYY-MM-DD_backlog.md` to mark sprint as active
-6. After completion, create a state snapshot in `docs/YYYY-MM-DD__HH-MM_current_state.md`
+```python
+import sqlite3
+conn = sqlite3.connect('workspace/factory.db')
+conn.execute(\"INSERT OR IGNORE INTO tasks (id, sprint_id, domain, description) VALUES (?,?,?,?)\",
+    ('MY-01', 1, 'Domain', 'Task description'))
+conn.commit()
+```
 
 ## Commit Message Convention
 
@@ -57,17 +77,17 @@ See `#[[file:_Development/OpenClaw/2026-03-27_backlog.md]]` for the live roadmap
 <type>(<scope>): <description>
 
 Types: feat, fix, refactor, docs, chore, security
-Scopes: librarian, architect, vector, safety, hitl, db, registry
+Scopes: librarian, architect, vector, safety, hitl, db, registry, config
 
 Examples:
-feat(architect): add dynamic LLM router with HITL guard
+feat(config): add find_project_root() anchor-based discovery
 fix(librarian): handle WAL checkpoint timeout on cold start
 security(hitl): enforce burn-on-read token for all deploy paths
 ```
 
 ## REGISTRY.md Refresh
 
-After any changes to agents or pipelines in `factory.db`, regenerate the registry:
+After any changes to agents in `factory.db`, regenerate the registry:
 
 ```bash
 python3 openclaw_skills/librarian/librarian_ctl.py refresh-registry \

@@ -124,21 +124,38 @@ def migrate_database(db_path: str):
         # Periodically synthesised by the backlog-manager into BACKLOG.md.
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS epistemic_backlog (
-                entry_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
                 agent_id     TEXT NOT NULL,
+                task_id      TEXT,
                 gap_type     TEXT CHECK(gap_type IN (
-                                 'tool_missing',
-                                 'knowledge_insufficient',
-                                 'logic_failure'
+                                 'tool',
+                                 'knowledge',
+                                 'integrity'
                              )),
                 description  TEXT NOT NULL,
-                context_json JSON,
-                status       TEXT DEFAULT 'raw'
-                             CHECK(status IN ('raw', 'analyzed', 'prioritized', 'resolved')),
-                created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                proposed_fix TEXT,
+                status       TEXT DEFAULT 'pending'
+                             CHECK(status IN ('pending', 'synthesized')),
+                timestamp    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
         logger.info("Ensured epistemic_backlog table exists.")
+
+        # 9. Create projects table in Global Hub (PR-06 — Multi-Project Registry)
+        # root_path uses TEXT UNIQUE to enforce the realpath uniqueness invariant.
+        # Callers MUST pass os.path.realpath(path) before inserting.
+        # parent_project_id uses ON DELETE SET NULL so deleting a parent does not
+        # cascade-delete child projects — it orphans them gracefully.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS projects (
+                id                TEXT PRIMARY KEY,
+                name              TEXT NOT NULL,
+                root_path         TEXT UNIQUE NOT NULL,
+                parent_project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+                created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        logger.info("Ensured projects table exists in Global Hub.")
 
         conn.commit()
     logger.info("Migration completed successfully.")
