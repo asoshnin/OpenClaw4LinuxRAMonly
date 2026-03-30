@@ -28,3 +28,23 @@ CREATE TABLE IF NOT EXISTS factory_assets (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Artifacts Index (LIB-01.1)
+-- Unified index of both Factory-managed and OpenClaw-native artifacts.
+-- source='agentic_factory'  -> owned by this factory, writable.
+-- source='openclaw_native'  -> read-only external dependency; managed by OpenClaw runtime.
+-- is_readonly=0 -> mutable  |  is_readonly=1 -> immutable (guard enforced in librarian_ctl.py)
+CREATE TABLE IF NOT EXISTS artifacts (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    name          TEXT UNIQUE NOT NULL,
+    artifact_type TEXT,
+    path          TEXT,
+    description   TEXT,
+    source        TEXT DEFAULT 'agentic_factory',
+    is_readonly   INTEGER DEFAULT 0,
+    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_artifacts_source ON artifacts(source);
+CREATE INDEX IF NOT EXISTS idx_artifacts_readonly ON artifacts(is_readonly);

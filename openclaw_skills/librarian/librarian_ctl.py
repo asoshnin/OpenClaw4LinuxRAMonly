@@ -51,6 +51,33 @@ def validate_path(target_path: str) -> str:
         raise PermissionError(f"Airlock Breach: {target_abs} is outside {base_dir}")
     return target_abs
 
+
+def assert_artifact_writable(db_path: str, artifact_name: str) -> None:
+    """[LIB-01.1] Runtime safety check — block any mutation of read-only artifacts.
+
+    This guard MUST be called before every write/update/delete operation that
+    targets the artifacts table. If the artifact has is_readonly=1, this function
+    raises PermissionError immediately and logs an ERROR — no mutation occurs.
+
+    Args:
+        db_path:       Path to factory.db (must already be Airlock-validated).
+        artifact_name: The unique artifact name to check.
+
+    Raises:
+        PermissionError: If the artifact exists and is_readonly == 1.
+    """
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT is_readonly FROM artifacts WHERE name = ?", (artifact_name,)
+        ).fetchone()
+    if row is not None and row[0] == 1:
+        msg = (
+            f"[LIB-01.1] Write blocked: artifact '{artifact_name}' is marked "
+            "is_readonly=1 (OpenClaw native). Factory tools may not modify it."
+        )
+        logger.error(msg)
+        raise PermissionError(msg)
+
 def init_db(db_path: str) -> None:
     """[DES-03] Database Schema & Initialization with WAL mode."""
     valid_db_path = validate_path(db_path)
@@ -128,28 +155,52 @@ def bootstrap_factory(db_path: str) -> None:
 
 
 def generate_registry(db_path: str, output_md_path: str) -> None:
-    """[DES-05] Atomic Write Pattern implementation for Registry Generation."""
+    """[DES-05] Atomic Write Pattern implementation for Registry Generation.
+
+    [LIB-01.1] Output is grouped into two sections:
+      1. Factory Managed Artifacts (source='agentic_factory', is_readonly=0)
+      2. OpenClaw Native Artifacts (source='openclaw_native', is_readonly=1) — Read-Only
+    """
     valid_db_path = validate_path(db_path)
     valid_out_path = validate_path(output_md_path)
-    
+
     with sqlite3.connect(valid_db_path) as conn:
         cursor = conn.cursor()
-        # Include description and tool_names (added in Sprint 5 migration)
+        # Agents
         cursor.execute("SELECT agent_id, name, version, description, tool_names FROM agents;")
         agents = cursor.fetchall()
 
+        # Pipelines
         cursor.execute("SELECT pipeline_id, name, status FROM pipelines;")
         pipelines = cursor.fetchall()
 
-    # Format data with YAML frontmatter
+        # Factory-managed artifacts (source != 'openclaw_native')
+        factory_artifacts = []
+        native_artifacts = []
+        artifacts_table_exists = cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='artifacts'"
+        ).fetchone()
+        if artifacts_table_exists:
+            cursor.execute(
+                "SELECT name, artifact_type, path, description, source, is_readonly "
+                "FROM artifacts ORDER BY source, name;"
+            )
+            for row in cursor.fetchall():
+                name, atype, path, desc, source, readonly = row
+                if source == "openclaw_native":
+                    native_artifacts.append(row)
+                else:
+                    factory_artifacts.append(row)
+
+    # ── Format YAML frontmatter ───────────────────────────────────────────────
     registry_content = "---\n"
     registry_content += "type: registry\n"
     registry_content += "generated_by: The Librarian\n"
     registry_content += f"last_updated: {datetime.now().isoformat()}\n"
     registry_content += "---\n\n"
-
     registry_content += "# Agentic Factory Registry\n\n"
 
+    # ── Active Agents ─────────────────────────────────────────────────────────
     registry_content += "## Active Agents\n\n"
     for agent_id, name, version, description, tool_names in agents:
         registry_content += f"- **{name}** (`{agent_id}`) - v{version}\n"
@@ -158,16 +209,41 @@ def generate_registry(db_path: str, output_md_path: str) -> None:
         if tool_names:
             registry_content += f"  - Tools: `{tool_names}`\n"
 
+    # ── System Pipelines ──────────────────────────────────────────────────────
     registry_content += "\n## System Pipelines\n\n"
     for pipeline_id, name, status in pipelines:
         registry_content += f"- **{name}** (`{pipeline_id}`) - Status: {status}\n"
-        
+
+    # ── Factory Managed Artifacts ─────────────────────────────────────────────
+    registry_content += "\n## Factory Managed Artifacts\n\n"
+    if factory_artifacts:
+        for name, atype, path, desc, source, readonly in factory_artifacts:
+            registry_content += f"- **{name}** (`{atype}`)"
+            if desc:
+                registry_content += f" — {desc}"
+            registry_content += "\n"
+    else:
+        registry_content += "*No factory-managed artifacts indexed yet.*\n"
+
+    # ── OpenClaw Native Artifacts (Read-Only) ─────────────────────────────────
+    registry_content += "\n## OpenClaw Native Artifacts (Read-Only)\n\n"
+    registry_content += "> ⚠️ These artifacts are managed by the OpenClaw runtime. "
+    registry_content += "They are indexed for JITH discovery only. "
+    registry_content += "Factory tools may not write, update, or delete them.\n\n"
+    if native_artifacts:
+        for name, atype, path, desc, source, readonly in native_artifacts:
+            registry_content += f"- **{name}** (`{atype}`)"
+            if desc:
+                registry_content += f" — {desc}"
+            registry_content += "\n"
+    else:
+        registry_content += "*No OpenClaw native artifacts indexed yet.*\n"
+        registry_content += "Run `python3 openclaw_skills/librarian/sync_openclaw_artifacts.py` to scan.\n"
+
+    # ── Atomic write ─────────────────────────────────────────────────────────
     temp_path = valid_out_path + ".tmp"
-    
-    # Write to temp file first for atomic replacement
     with open(temp_path, "w", encoding="utf-8") as f:
         f.write(registry_content)
-        
     os.replace(temp_path, valid_out_path)
 
 
