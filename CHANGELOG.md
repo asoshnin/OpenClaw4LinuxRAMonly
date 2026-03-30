@@ -28,6 +28,14 @@ All notable changes are listed by Sprint. This project follows a sprint-based de
 ### Wave 2 Perception Phase: Red Team Auditor (2026-03-30)
 - **RT-01 (Red Team Auditor):** Registered `red-team-auditor-01` into the DB. Implemented `run_audit` in `architect_tools.py` to enforce quality checks using a `<AUDIT_REPORT>` XML schema parsing logic, capturing epistemic challenges, findings, limits, status, and recommendations. Extended `run_agent()` to support `--audit` workflows, logging the structured review unconditionally to the `audit_logs` DB before release.
 
+- **SYS-02 (Task Queue Worker):** Implemented `feat(SYS-02): Atomic Async Task Queue Worker with HITL circuit breaker and zombie recovery`. Created TaskQueueManager in openclaw_skills/orchestrator/task_worker.py.
+
+- **EV-01 (Pi Coding Agent Bridge):** Implemented `feat(EV-01): ACP Coding Agent (Pi) Bridge and asynchronous session_id delegation tracking`. Created `CodingAgentBridge` in `openclaw_skills/orchestrator/pi_bridge.py` and modified `TaskQueueManager` to handle `processing_subagent` and `session_id`.
+
+- **MP-01 (Factory Manager):** Implemented `feat(MP-01): Event-Driven Factory Manager (Kimi-Orch-01) state machine with Git baseline artifact gathering`. Created `openclaw_skills/factory_orchestrator.py` dynamically resuming subagents safely via baseline git diffs gathered from `artifact_gatherer.py`.
+
+- **BL-01 (Backlog Manager Intake):** Implemented `feat(BL-01): Backlog Intake with LLM regex-decomposition, sequential task chaining (depends_on), and SKILL.md integration`. Created `BacklogIntake` logic in `intake.py` and wrapped in CLI utility `factory_cli.py`. Extended SQLite schema and upstream `TaskQueueManager.mark_task_completed()` logic to automatically unblock cascaded dependencies safely.
+
 - **LIB-01.1 & LIB-01.2 (Semantic Artifact Graph):** Transformed Librarian's registry from a static log into a semantic capability knowledge graph. Implemented `semantic_parser.py` (Local zero-shot LLM fallback + JSON decoding) to extract structured `capabilities` and `dependencies`. Added `assert_artifact_writable()` to strictly enforce `is_readonly=1` airgap on OpenClaw native artifacts (`openclaw::*`). Updated `sync_openclaw_artifacts.py` to aggressively filter target components before upserting the semantic graph into `factory.db`. 22 tests passing in `tests/test_lib01_1_artifacts.py`.
 
 ---

@@ -11,7 +11,13 @@ CREATE TABLE IF NOT EXISTS tasks (
     payload TEXT NOT NULL,
     is_sensitive BOOLEAN NOT NULL DEFAULT 0,
     required_tier TEXT NOT NULL,
-    status TEXT CHECK(status IN ('queued', 'processing', 'completed', 'failed', 'pending_hitl')) NOT NULL DEFAULT 'queued',
+    status TEXT CHECK(status IN ('queued', 'processing', 'completed', 'failed', 'pending_hitl', 'processing_subagent', 'blocked')) NOT NULL DEFAULT 'queued',
+    attempt_count INTEGER DEFAULT 0,
+    max_retries INTEGER DEFAULT 3,
+    last_error TEXT,
+    session_id TEXT,
+    baseline_commit TEXT,
+    depends_on TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

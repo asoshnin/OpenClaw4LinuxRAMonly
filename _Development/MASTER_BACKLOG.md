@@ -18,25 +18,25 @@ This document synthesizes all identified backlog tasks from textual sources and 
 | **PR-05** | 1 | Config | Multi-Project Context Switcher: find_project_root() + silo path resolution |  |  | Complete |
 | **PR-06** | 1 | DB | Global Project Registry: Cross-project relations and lineage tracking |  |  | Complete |
 | **RT-01** | 2 | Audit | Implement Red Team Auditor agent with structured assessment protocol |  |  | Complete |
-| **SB-01** | 2 | Bridge | Implement Block A: VAULT_QA_NOTE_MAX_CHARS & TypedDicts |  |  | Pending |
-| **SB-02** | 2 | Bridge | Implement Block B: search_vault() tool (w/ Path Validation) |  |  | Pending |
-| **SB-03** | 2 | Bridge | Implement Block C: vault_qa() tool + 9 tests (Context Guard) |  |  | Pending |
-| **SB-04** | 2 | Bridge | Implement Block D: [VAULT CONTEXT] prompt block in run_agent() |  |  | Pending |
-| **SB-05** | 2 | Bridge | Implement Block E/F: vault-qa CLI + 174 test suite |  |  | Pending |
-| **BL-01** | 3 | Backlog | Automated Epistemic Backlog: Agents write gaps to factory.db |  |  | Pending |
-| **EV-01** | 3 | Evolution | Integrate OpenCode/Cline/Pi coding stack into R&D swarm workflows |  |  | Pending |
+| **SB-01** | 3 | Bridge | Implement Block A: VAULT_QA_NOTE_MAX_CHARS & TypedDicts |  |  | Pending |
+| **SB-02** | 3 | Bridge | Implement Block B: search_vault() tool (w/ Path Validation) |  |  | Pending |
+| **SB-03** | 3 | Bridge | Implement Block C: vault_qa() tool + 9 tests (Context Guard) |  |  | Pending |
+| **SB-04** | 3 | Bridge | Implement Block D: [VAULT CONTEXT] prompt block in run_agent() |  |  | Pending |
+| **SB-05** | 3 | Bridge | Implement Block E/F: vault-qa CLI + 174 test suite |  |  | Pending |
+| **BL-01** | 3 | Backlog | Automated Epistemic Backlog: Agents write gaps to factory.db |  |  | Complete |
+| **EV-01** | 2 | Evolution | Integrate OpenCode/Cline/Pi coding stack into R&D swarm workflows |  |  | Complete |
 | **EV-02** | 3 | Evolution | Implement Janitor Agent with strict Deletion Allowlist (Trash policy) |  |  | Pending |
 | **PE-01** | 3 | Persona | Build Persona Builder assistant (Search, Voice, Vault grounding) |  |  | Pending |
 | **PR-03** | 3 | Prompt | Tiered Inference: Label prompts as FLASH (Markdown) or PRO (XML) |  |  | Pending |
 | **PR-04** | 3 | Prompt | POMDP Framework: Belief State (Knowns/Unknowns) & Pro-con lookahead |  |  | Pending |
 | **BL-02** | 4 | Backlog | BacklogManager Agent: Periodic synthesis of raw gaps into BACKLOG.md |  |  | Pending |
-| **GOV-01** | 4 | Gov. | Integrate LangFuse for task-level token budgeting and cost monitoring |  |  | Pending |
-| **MP-01** | 4 | Market | Architecture: Decouple /core from /custom skills + Sandboxing |  |  | Pending |
+| **GOV-01** | 2 | Gov. | Resource Governor Agent: Token budgeting, state save & HITL resume |  |  | Pending |
+| **MP-01** | 2 | Orchest. | Dynamic Router: Event-Driven Factory Manager (Kimi-Orch-01) |  |  | Complete |
 | **OSS-01** | 4 | OSS | Block E: Create docs/glossary.md and docs/getting_started.md |  |  | Pending |
 | **OSS-02** | 4 | OSS | Block F: Final .gitignore cleanup and git rm of _Development/ |  |  | Pending |
 | **RH-01** | 4 | Roles | Provision 18 Role Helper profiles (Executive, Product, Legal, etc.) |  |  | Pending |
 | **SYS-01** | 4 | Resil. | Health-Check Supervisor: Pre-flight ping and systemctl recovery |  |  | Pending |
-| **SYS-02** | 4 | Scaling | SQLite-backed Async Task Queue (WAL mode) |  |  | Pending |
+| **SYS-02** | 2 | Scaling | SQLite-backed Async Task Queue (WAL mode) w/ Hitl limits |  |  | Complete |
 | **UI-01** | 4 | UI/UX | Design/Build visual dashboard for swarm management and settings |  |  | Pending |
 <!-- END_STATUS_TABLE -->
 
