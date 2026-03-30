@@ -23,14 +23,20 @@ import logging
 import argparse
 from typing import List, Tuple
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
-
 # ── Path resolution ───────────────────────────────────────────────────────────
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _SKILLS_ROOT = os.path.dirname(_HERE)  # openclaw_skills/
 _PROJECT_ROOT = os.path.dirname(_SKILLS_ROOT)  # agentic_factory/
+
+if _SKILLS_ROOT not in sys.path:
+    sys.path.insert(0, _SKILLS_ROOT)
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
+
 
 
 def _resolve_native_openclaw_paths() -> List[str]:
@@ -133,21 +139,62 @@ def _scan_directory(
                 logger.debug("Skipping symlink: %s", full_path)
                 continue
 
-            _, ext = os.path.splitext(fname)
-            if ext.lower() not in extensions:
+            # ── LIB-01.2: Strict filtering for semantic manifests ──────────────
+            fname_lower = fname.lower()
+            file_type = ""
+            if fname_lower in ("skill.md", "skill"):
+                file_type = "md"
+            elif fname_lower.endswith(".plugin.json"):
+                file_type = "json"
+            elif fname_lower == "package.json":
+                try:
+                    with open(full_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    if "openclaw" not in data:
+                        continue
+                except Exception:
+                    continue
+                file_type = "json"
+            else:
                 continue
 
-            stem = os.path.splitext(fname)[0]
+            # Avoid naming collisions by using the parent directory name for generic files
+            if fname_lower in ("skill.md", "skill", "package.json", "openclaw.plugin.json"):
+                stem = os.path.basename(dirpath) or "root"
+            else:
+                stem = fname_lower.replace(".plugin.json", "")
+
             artifact_name = f"{name_prefix}{stem}" if name_prefix else stem
             real_path = os.path.realpath(full_path)
 
+            # Extract semantics
+            try:
+                from semantic_parser import extract_semantics
+            except ImportError:
+                try:
+                    from librarian.semantic_parser import extract_semantics
+                except ImportError:
+                    from openclaw_skills.librarian.semantic_parser import extract_semantics
+
+            try:
+                with open(full_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                sem = extract_semantics(content, file_type)
+            except Exception as e:
+                logger.warning("FAILED TO READ %s for semantics: %s", full_path, e)
+                sem = {"description": "", "capabilities": [], "dependencies": []}
+
+            desc = sem["description"] if sem["description"] else f"Discovered from {os.path.relpath(full_path, root)}"
+
             results.append({
                 "name": artifact_name,
-                "artifact_type": ext.lstrip("."),
+                "artifact_type": file_type,
                 "path": real_path,
-                "description": f"Discovered from {os.path.relpath(full_path, root)}",
+                "description": desc,
                 "source": source,
                 "is_readonly": is_readonly,
+                "capabilities": json.dumps(sem["capabilities"]),
+                "dependencies": json.dumps(sem["dependencies"]),
             })
 
     return results
@@ -183,12 +230,14 @@ def _upsert_artifacts(conn: sqlite3.Connection, artifacts: List[dict], dry_run: 
                     """
                     UPDATE artifacts
                     SET artifact_type=?, path=?, description=?, source=?,
-                        is_readonly=?, updated_at=CURRENT_TIMESTAMP
+                        is_readonly=?, capabilities=?, dependencies=?, updated_at=CURRENT_TIMESTAMP
                     WHERE name=?
                     """,
                     (
                         art["artifact_type"], art["path"], art["description"],
-                        art["source"], art["is_readonly"], art["name"],
+                        art["source"], art["is_readonly"],
+                        art["capabilities"], art["dependencies"],
+                        art["name"],
                     ),
                 )
             else:
@@ -198,12 +247,13 @@ def _upsert_artifacts(conn: sqlite3.Connection, artifacts: List[dict], dry_run: 
             if not dry_run:
                 conn.execute(
                     """
-                    INSERT INTO artifacts (name, artifact_type, path, description, source, is_readonly)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO artifacts (name, artifact_type, path, description, source, is_readonly, capabilities, dependencies)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         art["name"], art["artifact_type"], art["path"],
                         art["description"], art["source"], art["is_readonly"],
+                        art["capabilities"], art["dependencies"]
                     ),
                 )
             else:

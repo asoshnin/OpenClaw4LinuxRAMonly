@@ -25,6 +25,8 @@ All notable changes are listed by Sprint. This project follows a sprint-based de
 
 - **PR-06 (Global Project Registry & `factory-init`):** Added `projects` table to `factory.db` via `migrate_db.py` step 9 (`ON DELETE SET NULL` for parent lineage). Extracted shared schema DDL into `openclaw_skills/librarian/db_utils.py` (`initialize_project_schema()`). Built `openclaw_skills/architect/project_init.py` — `factory-init` CLI with pre-flight guard (abort on existing `project.db`/anchor unless `--force`), `realpath` normalization, directory provisioning, and Global Hub registration with parent validation. 16 tests in `tests/test_pr06_project_registry.py`.
 
+- **LIB-01.1 & LIB-01.2 (Semantic Artifact Graph):** Transformed Librarian's registry from a static log into a semantic capability knowledge graph. Implemented `semantic_parser.py` (Local zero-shot LLM fallback + JSON decoding) to extract structured `capabilities` and `dependencies`. Added `assert_artifact_writable()` to strictly enforce `is_readonly=1` airgap on OpenClaw native artifacts (`openclaw::*`). Updated `sync_openclaw_artifacts.py` to aggressively filter target components before upserting the semantic graph into `factory.db`. 22 tests passing in `tests/test_lib01_1_artifacts.py`.
+
 ---
 ## Wave 1 Foundation (2026-03-29) — Epistemic Backlog Migration
 

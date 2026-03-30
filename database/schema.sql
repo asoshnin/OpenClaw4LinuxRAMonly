@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS artifacts (
     description   TEXT,
     source        TEXT DEFAULT 'agentic_factory',
     is_readonly   INTEGER DEFAULT 0,
+    capabilities  TEXT,
+    dependencies  TEXT,
     created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

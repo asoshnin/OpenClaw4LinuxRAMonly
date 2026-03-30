@@ -75,15 +75,24 @@ def fake_factory_dir(tmp_path):
     """A fake openclaw_skills-like directory for scanning."""
     d = tmp_path / "factory_skills"
     d.mkdir()
-    (d / "router.py").write_text("# router")
-    (d / "config.py").write_text("# config")
+    
+    # Must match: SKILL.md, *.plugin.json, package.json with openclaw
+    r = d / "router"
+    r.mkdir()
+    (r / "SKILL.md").write_text("# router\ndescription: core router")
+    
+    c = d / "config"
+    c.mkdir()
+    (c / "package.json").write_text('{"openclaw": {"description": "config block"}}')
+
     sub = d / "librarian"
     sub.mkdir()
-    (sub / "migrate_db.py").write_text("# migrate")
-    (sub / "notes.md").write_text("# notes")
+    (sub / "librarian.plugin.json").write_text('{"description": "migrate"}')
+    (sub / "notes.md").write_text("# notes") # will be ignored
+
     # Symlink — must be skipped
-    link = d / "evil_link.py"
-    link.symlink_to(d / "router.py")
+    link = d / "evil_link.plugin.json"
+    link.symlink_to(sub / "librarian.plugin.json")
     return str(d)
 
 
@@ -94,11 +103,17 @@ def fake_native_dir(tmp_path):
     d.mkdir()
     skills = d / "skills"
     skills.mkdir()
-    (skills / "weather.json").write_text("{}")
-    (skills / "healthcheck.md").write_text("# healthcheck")
+    
+    (skills / "weather.plugin.json").write_text('{"description": "weather"}')
+    (skills / "healthcheck.md").write_text("# healthcheck") # ignored
+    
+    h = skills / "health"
+    h.mkdir()
+    (h / "SKILL.md").write_text("# health check")
+
     # Symlink inside native — must be skipped
-    link = skills / "loop_link.json"
-    link.symlink_to(skills / "weather.json")
+    link = skills / "loop_link.plugin.json"
+    link.symlink_to(skills / "weather.plugin.json")
     return str(skills)
 
 
@@ -141,13 +156,13 @@ class TestMigrationLIB011:
 
 class TestScanDirectory:
 
-    def test_factory_scan_finds_py_and_md(self, fake_factory_dir):
+    def test_factory_scan_finds_semantic_manifests(self, fake_factory_dir):
         results = _scan_directory(fake_factory_dir, name_prefix="", source="agentic_factory")
         names = {r["name"] for r in results}
         assert "router" in names
         assert "config" in names
-        assert "migrate_db" in names
-        assert "notes" in names
+        assert "librarian" in names
+        assert "notes" not in names
 
     def test_factory_scan_skips_symlinks(self, fake_factory_dir):
         results = _scan_directory(fake_factory_dir, name_prefix="", source="agentic_factory")
@@ -168,7 +183,8 @@ class TestScanDirectory:
         )
         names = {r["name"] for r in results}
         assert "openclaw::weather" in names
-        assert "openclaw::healthcheck" in names
+        assert "openclaw::health" in names
+        assert "openclaw::healthcheck" not in names
 
     def test_native_scan_skips_symlinks(self, fake_native_dir):
         results = _scan_directory(fake_native_dir, name_prefix="openclaw::")
