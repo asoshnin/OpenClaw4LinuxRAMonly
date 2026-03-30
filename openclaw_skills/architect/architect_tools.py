@@ -284,7 +284,88 @@ def teardown_pipeline(db_path: str, pipeline_id: str) -> str:
             f"Skipped: {', '.join(skipped_agents) if skipped_agents else 'None'}.")
 
 
-def run_agent(db_path: str, agent_id: str, task_text: str, vault_qa_result: dict = None, is_sensitive: bool = False) -> str:
+def run_audit(artifact_text: str, task_context: str) -> dict:
+    """[RT-01] Execute Red Team Audit on generated outputs before signing off.
+    
+    Parses `<AUDIT_REPORT>` XML tags from the RED TEAM persona response.
+    Returns:
+        {"epistemic_challenge": str, "status": str, "findings": list, "recommendations": list}
+    """
+    from config import GLOBAL_DB_PATH
+    
+    # 1. Retrieve the RT-01 persona
+    db_path = str(GLOBAL_DB_PATH) if GLOBAL_DB_PATH else "factory.db"
+    agent = get_agent_persona(db_path, "red-team-auditor-01")
+    if not agent:
+        raise ValueError("Auditor red-team-auditor-01 not found in registry.")
+    
+    system_prompt = agent.get('description', '')
+    
+    # Empty artifact check
+    if not artifact_text or not artifact_text.strip():
+        return {
+            "epistemic_challenge": "Artifact is empty. No evidence provided.",
+            "status": "🔴 NO GO",
+            "findings": ["[Severity: High] Issue: Empty artifact Impact: Cannot audit nothing."],
+            "recommendations": ["Provide a non-empty artifact for auditing."]
+        }
+        
+    # Empty context fallback
+    if not task_context or not task_context.strip():
+        return {
+            "epistemic_challenge": "Task context is empty. Unable to ground assumptions.",
+            "status": "🔴 NO GO",
+            "findings": ["[Severity: High] Issue: Missing execution context Impact: Assumptions cannot be verified."],
+            "recommendations": ["Provide the task execution context metadata."]
+        }
+    
+    prompt = f"{system_prompt}\n\n[TASK CONTEXT]\n{task_context}\n\n[ARTIFACT TO AUDIT]\n{artifact_text}\n\nProduce your `<AUDIT_REPORT>` format exactly as directed."
+    
+    try:
+        url = get_active_ollama_url()
+        # RT-01 demands PRO tier inference
+        response = call_inference("PRO", url, prompt)
+    except Exception as e:
+        logger.error(f"Audit Inference Failed: {e}")
+        return {
+            "epistemic_challenge": "Audit Inference Error",
+            "status": "🔴 NO GO",
+            "findings": [f"Exception: {e}"],
+            "recommendations": ["Check connectivity to Ollama or Gateway."]
+        }
+
+    # Extract XML
+    chal_match = re.search(r"<EPISTEMIC_CHALLENGE>(.*?)</EPISTEMIC_CHALLENGE>", response, re.DOTALL)
+    stat_match = re.search(r"<STATUS>(.*?)</STATUS>", response, re.DOTALL)
+    find_match = re.search(r"<FINDINGS>(.*?)</FINDINGS>", response, re.DOTALL)
+    reco_match = re.search(r"<RECOMMENDATIONS>(.*?)</RECOMMENDATIONS>", response, re.DOTALL)
+
+    chal = chal_match.group(1).strip() if chal_match else "No specific challenge extracted."
+    stat = stat_match.group(1).strip() if stat_match else "🔴 NO GO"
+    
+    # Safety: strict exact phrase formatting checking
+    if "SIGN OFF" in stat:
+        stat = "🟢 SIGN OFF"
+    elif "CONDITIONAL PASS" in stat:
+        stat = "🟡 CONDITIONAL PASS"
+    else:
+        stat = "🔴 NO GO"
+        
+    find_txt = find_match.group(1).strip() if find_match else ""
+    findings = [f.strip(' -') for f in find_txt.split('\n') if f.strip() and f.strip() != '-']
+    
+    reco_txt = reco_match.group(1).strip() if reco_match else ""
+    recommendations = [r.strip('1234567890. ') for r in reco_txt.split('\n') if r.strip()]
+
+    return {
+        "epistemic_challenge": chal,
+        "status": stat,
+        "findings": findings,
+        "recommendations": recommendations
+    }
+
+
+def run_agent(db_path: str, agent_id: str, task_text: str, vault_qa_result: dict = None, is_sensitive: bool = False, audit: bool = False) -> str:
     """[DES-S5-03 / DES-S6-02] Execute a task attributed to a registered agent.
 
     Flow (Sprint 11 prompt order per SKILL.md):
@@ -445,6 +526,31 @@ def run_agent(db_path: str, agent_id: str, task_text: str, vault_qa_result: dict
         )
         conn.commit()
 
+    if audit:
+        # Invoke RT-01
+        try:
+            audit_report = run_audit(response, task_text)
+            
+            # Log the audit action
+            with sqlite3.connect(valid_db) as conn:
+                conn.execute(
+                    "INSERT INTO audit_logs (agent_id, action, rationale) VALUES (?, 'AGENT_AUDIT', ?)",
+                    (agent_id, json.dumps(audit_report)[:500]),
+                )
+                conn.commit()
+                
+            if audit_report["status"] == "🔴 NO GO":
+                logger.warning("run_agent: Audit returned NO GO. Halting execution.")
+                return json.dumps(audit_report, indent=2)
+        except Exception as e:
+            logger.error(f"Audit processing failed: {e}")
+            return json.dumps({
+                "epistemic_challenge": "Audit System Error",
+                "status": "🔴 NO GO",
+                "findings": [str(e)],
+                "recommendations": []
+            })
+            
     logger.info("run_agent: '%s' completed task, response length=%d", agent_id, len(response))
     return response
 
@@ -866,6 +972,7 @@ if __name__ == "__main__":
     run_parser.add_argument("db_path", type=str, help="Path to SQLite DB")
     run_parser.add_argument("agent_id", type=str, help="Agent ID (e.g. kimi-orch-01)")
     run_parser.add_argument("task", type=str, help="Task description in natural language")
+    run_parser.add_argument("--audit", action="store_true", help="Run Red Team audit on output")
 
     vault_parser = subparsers.add_parser(
         "write-to-vault", help="Write an agent result to the Obsidian vault"
@@ -989,7 +1096,7 @@ if __name__ == "__main__":
             result = teardown_pipeline(args.db_path, args.pipeline_id)
             print(result)
         elif args.command == "run":
-            result = run_agent(args.db_path, args.agent_id, args.task)
+            result = run_agent(args.db_path, args.agent_id, args.task, audit=getattr(args, 'audit', False))
             print(result)
         elif args.command == "write-to-vault":
             written = write_agent_result_to_vault(
