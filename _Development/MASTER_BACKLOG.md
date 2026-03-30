@@ -32,12 +32,13 @@ This document synthesizes all identified backlog tasks from textual sources and 
 | **BL-02** | 4 | Backlog | BacklogManager Agent: Periodic synthesis of raw gaps into BACKLOG.md |  |  | Pending |
 | **GOV-01** | 2 | Gov. | Resource Governor Agent: Token budgeting, state save & HITL resume |  |  | Pending |
 | **MP-01** | 2 | Orchest. | Dynamic Router: Event-Driven Factory Manager (Kimi-Orch-01) |  |  | Complete |
-| **OSS-01** | 4 | OSS | Block E: Create docs/glossary.md and docs/getting_started.md |  |  | Pending |
+| **OSS-01** | 4 | OSS | Block E: Create docs/glossary.md and docs/getting_started.md |  |  | Complete |
 | **OSS-02** | 4 | OSS | Block F: Final .gitignore cleanup and git rm of _Development/ |  |  | Pending |
 | **RH-01** | 4 | Roles | Provision 18 Role Helper profiles (Executive, Product, Legal, etc.) |  |  | Pending |
 | **SYS-01** | 4 | Resil. | Health-Check Supervisor: Pre-flight ping and systemctl recovery |  |  | Pending |
 | **SYS-02** | 2 | Scaling | SQLite-backed Async Task Queue (WAL mode) w/ Hitl limits |  |  | Complete |
 | **UI-01** | 4 | UI/UX | Design/Build visual dashboard for swarm management and settings |  |  | Pending |
+| **QA-01** | 2 | QA | End-to-End Pipeline Validation (Happy Path & Circuit Breaker) |  |  | Complete |
 <!-- END_STATUS_TABLE -->
 
 ## 🎯 Strategic Priorities (March 29th)

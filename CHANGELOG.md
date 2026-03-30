@@ -28,6 +28,10 @@ All notable changes are listed by Sprint. This project follows a sprint-based de
 ### Wave 2 Perception Phase: Red Team Auditor (2026-03-30)
 - **RT-01 (Red Team Auditor):** Registered `red-team-auditor-01` into the DB. Implemented `run_audit` in `architect_tools.py` to enforce quality checks using a `<AUDIT_REPORT>` XML schema parsing logic, capturing epistemic challenges, findings, limits, status, and recommendations. Extended `run_agent()` to support `--audit` workflows, logging the structured review unconditionally to the `audit_logs` DB before release.
 
+- **docs(OSS-01):** Created Chat-First `getting_started.md` operational manual for Vibe Coders.
+
+- **feat(QA-01):** Comprehensive E2E factory pipeline testing suite with isolated Git/DB fixtures. Implemented `tests/test_e2e_factory.py` to test Happy Path, Dependency Unblocking and the HITL Circuit Breaker loop safely using local mocks of `call_inference`.
+
 - **SYS-02 (Task Queue Worker):** Implemented `feat(SYS-02): Atomic Async Task Queue Worker with HITL circuit breaker and zombie recovery`. Created TaskQueueManager in openclaw_skills/orchestrator/task_worker.py.
 
 - **EV-01 (Pi Coding Agent Bridge):** Implemented `feat(EV-01): ACP Coding Agent (Pi) Bridge and asynchronous session_id delegation tracking`. Created `CodingAgentBridge` in `openclaw_skills/orchestrator/pi_bridge.py` and modified `TaskQueueManager` to handle `processing_subagent` and `session_id`.

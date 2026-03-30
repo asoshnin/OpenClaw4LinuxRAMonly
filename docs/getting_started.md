@@ -1,164 +1,61 @@
-# Getting Started with OpenClaw
+# Quickstart for Vibe Coders: The OpenClaw Factory
 
-Welcome. This guide walks you through OpenClaw from zero — no prior AI framework experience needed.
+Welcome to the **OpenClaw Agentic Factory**. This guide is for the Epistemic Navigator ("vibe coder") who wants to command the factory primarily through natural language chat with their primary orchestrator assistant (Kimi).
 
----
+## 1. The Autonomous Factory (How it Works)
 
-## 1. What is OpenClaw?
+The Factory operates like an autonomous assembly line where agents collaborate to achieve your goals:
 
-OpenClaw is a local-first AI agent runtime for Linux. It lets you create named AI agents, give them tasks, and keep a complete audit trail of what they did — all without sending sensitive data to the cloud. The key difference from tools like LangChain or AutoGen: **nothing consequential happens without your explicit approval**. A native OS dialog appears and waits for you to click Yes or No before any workflow is deployed.
+1.  **You give a goal** and Kimi plans out the specific steps required to build it.
+2.  **The Planner (Kimi)** queues these steps into the Factory's database.
+3.  **The Coder (Pi)** picks up the first step and writes the actual code.
+4.  **The Auditor (Red Team)** ruthlessly reviews the Coder's work. It checks for logic gaps, security flaws, and missed requirements.
+5.  If the Auditor rejects the code, the Coder tries again. If it fails 3 times, the factory pauses and Kimi asks you for help.
+6.  If the Auditor signs off, the next step in the queue is automatically unblocked and the cycle repeats.
 
-See the [Glossary](glossary.md) if any terms below are unfamiliar.
+You don't need to micromanage the pipeline. Once you submit a plan, the Factory takes over.
 
----
+## 2. Starting a New Project
 
-## 2. What is an "agent"?
+To keep your workspaces clean and isolated without typing out long paths, ask Kimi to set up a new project silo for you.
 
-An agent is a named AI persona stored in the database. Think of it like a job role: `kimi-orch-01` is the Mega-Orchestrator (plans and delegates tasks), and `lib-keeper-01` is The Librarian (manages memory and files). Agents don't run continuously — they activate when you send a task, produce a response, and stop. You can create your own agents for specific roles: research summariser, document classifier, code reviewer, etc.
+**Copy-paste this exact prompt into your chat:**
+> Kimi, please initialize a new Factory project folder called 'weather_app'.
 
----
+Kimi will use its `factory-init` skill to create the folder, set up an isolated database, and link it to the global Factory registry.
 
-## 3. What is the Navigator role?
+## 3. Submitting Tasks (The Intake)
 
-**You.** The Navigator is the human operator who:
-- Approves or rejects workflow deployments (via GUI popup)
-- Reviews and approves proposed changes to the knowledge base
-- Decides what data stays local vs. what can go to the cloud
+Kimi uses the `SKILL.md` instructions to translate your natural language requests into queued tasks for the Factory.
 
-The system is explicitly designed so that an AI agent can never take a consequential action without your click.
+**To plan and build a new feature:**
+**Copy-paste this prompt into your chat:**
+> Kimi, use the Factory to plan and build a Python script that fetches the weather. Break it down into steps.
 
----
+Kimi will decompose your high-level goal into a series of dependent tasks and submit them all to the queue.
 
-## 4. Running your first task
+**To submit a single, isolated task:**
+**Copy-paste this prompt into your chat:**
+> Kimi, use the Factory to submit a single task: Fix the CSS on the login page.
 
-After completing `bash setup.sh`, run:
+## 4. Monitoring Progress & Circuit Breakers
 
-```bash
-python3 openclaw_skills/architect/architect_tools.py run \
-  "$HOME/.openclaw/workspace/factory.db" \
-  kimi-orch-01 \
-  "What agents are currently registered in the factory?"
-```
+The Agentic Factory runs automatically in the background driven by Kimi's Heartbeat. You do not need to sit and wait or even keep the chat open.
 
-Here is what each part of the output means:
+**The Circuit Breaker**
+If the Coder writes bad code and the Auditor rejects it 3 times, the factory pauses to prevent endless loops.
 
-```
-[KB] Loaded 3 security rules, 2 capability boundaries, 3 epistemic invariants.
-```
-→ The Knowledge Base was injected as the first prompt block. The agent cannot override these rules.
+When this happens, you will see a Circuit Breaker pause. Kimi will proactively message you in this chat with the Auditor's feedback, the Coder's last attempt, and ask you what to do next to unblock the pipeline.
 
-```
-[MEMORY] Retrieved 0 faint paths from vector archive.
-```
-→ No similar past sessions were found (empty archive on first run — this is normal).
+## 5. Appendix: Under the Hood (For Debugging Only)
 
-```
-[AGENT kimi-orch-01] Task received: "What agents are currently registered..."
-```
-→ The agent is processing your task using the local Ollama model.
+If Kimi is offline or you prefer to bypass the chat interface, you can manually trigger the Factory pipelines via the terminal.
 
-```
-[RESPONSE] Currently registered agents are:
-  - Mega-Orchestrator (kimi-orch-01) v1.3 [SYSTEM]
-  - The Librarian (lib-keeper-01) v1.0 [SYSTEM]
-```
-→ The agent's response. The task result is also written to `audit_logs` in `factory.db`.
+- To manually submit a plan via CLI:
+  `python3 openclaw_skills/orchestrator/factory_cli.py plan "Your goal here"`
+- To manually submit a single task:
+  `python3 openclaw_skills/orchestrator/factory_cli.py submit "Your task here"`
+- To manually step the orchestrator (Force Heartbeat):
+  `python3 openclaw_skills/orchestrator/factory_cli.py trigger`
 
----
-
-## 5. Reading the audit log
-
-Every action taken by an agent is recorded in `factory.db`. To see recent entries:
-
-```bash
-sqlite3 "$HOME/.openclaw/workspace/factory.db" \
-  "SELECT timestamp, agent_id, action, rationale FROM audit_logs ORDER BY timestamp DESC LIMIT 10;"
-```
-
-What to look for:
-- `RUN_AGENT` — a task was executed
-- `ROUTE_LOCAL` — inference was routed to local Ollama
-- `ROUTE_CLOUD` — inference was routed to Gemini (non-sensitive only)
-- `ROUTING_HALT` — a sensitive+cloud routing attempt was blocked
-- `VAULT_WRITE_SKIPPED` — Obsidian is not running (non-fatal)
-- `VAULT_INGEST` — a vault note was successfully archived to memory
-
----
-
-## 6. Understanding the HITL popup
-
-When a workflow deployment is triggered, a native OS dialog appears:
-
-```
-┌─────────────────────────────────────┐
-│  HITL Approval Required             │
-│                                     │
-│  Pipeline: system_bootstrap_pipeline│
-│  Action: DEPLOY                     │
-│                                     │
-│  [Yes — Deploy]    [No — Abort]     │
-└─────────────────────────────────────┘
-```
-
-- **Click Yes**: A Burn-on-Read token is generated and immediately consumed internally. The workflow is deployed and the action is logged.
-- **Click No**: A `PermissionError` is raised. Nothing is written. The attempt is logged.
-
-The dialog is non-dismissable — you cannot close it without clicking Yes or No. This ensures every deployment is an explicit decision.
-
----
-
-## 7. Reading REGISTRY.md
-
-`~/.openclaw/workspace/REGISTRY.md` is a human-readable snapshot of all agents and workflows in the system. Regenerate it any time:
-
-```bash
-python3 openclaw_skills/librarian/librarian_ctl.py refresh-registry \
-  "$HOME/.openclaw/workspace/factory.db" \
-  "$HOME/.openclaw/workspace/REGISTRY.md"
-```
-
----
-
-## 8. Optional: Connect Your Obsidian Vault
-
-If you use [Obsidian](https://obsidian.md) as your personal knowledge base, you can feed your own notes directly to your agents as trusted context. This is one of the most powerful features of the system — instead of the agent only having access to system audit logs, it can draw on your own curated notes, research, and reference material.
-
-**Security guarantee:** The Obsidian integration is loopback-only (`127.0.0.1` enforced at the code level — no remote connections), all vault content passes through the Epistemic Scrubber before entering the vector archive, and the Sensitivity Gate prevents any vault data from being sent to the cloud.
-
-→ Full setup guide: [docs/linux_obsidian_setup.md](linux_obsidian_setup.md)
-
----
-
-## 9. Mobile Access: Telegram Interface (BETA)
-
-You can interact with your Agentic Factory on the go using the **Telegram Interface**. This "Thin Client" connects your mobile device to your local OpenClaw runtime, allowing you to run tasks and review agent outputs from anywhere.
-
-→ See the [Telegram Interface Guide](telegram_interface.md) for details on commands and security.
-
----
-
-## 10. Common Problems
-
-### "INFERENCE_ALERT: Both Local and GPU Ollama servers are offline"
-```
-INFERENCE_ALERT: Both Local and GPU Ollama servers are offline. Permission required to use Cloud LLM (Gemini) for this task. Reply with 'Approve Cloud' to proceed.
-```
-**Fix:** Start Ollama on your remote GPU server or your local Linux machine. Then ensure the required models are pulled (e.g., `ollama pull qwen3.5:9b`, `ollama pull nomic-embed-text`).
-
-### "GEMINI_API_KEY environment variable not set"
-```
-ValueError: GEMINI_API_KEY environment variable not set.
-```
-**Fix:** Either set the env var (`export GEMINI_API_KEY=...`) or use `--sensitive` flag to force local-only inference.
-
-### "Python 3.10+ is required"
-**Fix:** On Ubuntu 20.04: `sudo apt install python3.10`. Then use `python3.10` instead of `python3`.
-
-### "Airlock Breach"
-**Fix:** You are trying to write a file outside `OPENCLAW_WORKSPACE`. Check your `OPENCLAW_WORKSPACE` env var and ensure it points to a directory inside your home folder.
-
----
-
-## 10. Next Steps
-
-→ **[How to Create Your First Custom Agent](how_to_create_agent.md)**
+**Siloed Database Path:** By default, the queue runs out of the global hub: `/home/alexey/openclaw-inbox/agentic_factory/workspace/factory.db`.

@@ -9,6 +9,14 @@ OpenClaw is a hardened agentic runtime for Linux x86_64. It solves the central p
 
 ---
 
+## Quickstart for Vibe Coders
+
+Are you an Epistemic Navigator ("vibe coder") who wants to command the factory primarily through natural language chat? 
+
+👉 **[Read the Quickstart Guide](docs/getting_started.md)** to learn how to orchestrate the Factory without touching the terminal.
+
+---
+
 ## Why OpenClaw?
 
 | Dimension | LangChain | CrewAI | AutoGen | **OpenClaw** |
