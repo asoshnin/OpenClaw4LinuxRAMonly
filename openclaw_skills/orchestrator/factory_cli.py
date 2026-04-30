@@ -34,8 +34,23 @@ def main():
         task_ids = intake.decompose_and_submit(args.goal)
         print(f"Plan created with tasks: {task_ids}")
     elif args.command == "trigger":
-        res = run_orchestrator()
-        print(f"Triggered workflow: {res}")
+        import time
+        import json
+        watchdog_interval = float(os.environ.get("OPENCLAW_WATCHDOG_INTERVAL", "30.0"))
+        print(f"Starting orchestration loop... (Watchdog interval: {watchdog_interval}s)")
+        try:
+            while True:
+                res = run_orchestrator()
+                # Check for idle or halted
+                if not res or res.get("status") in ["idle", "halted"]:
+                    print(f"Queue idle/halted. Sleeping {watchdog_interval}s...")
+                    time.sleep(watchdog_interval)
+                else:
+                    print(f"Task processed: {json.dumps(res)}")
+                    print("Cooling down 5s before next task...")
+                    time.sleep(5)
+        except KeyboardInterrupt:
+            print("\nOrchestrator loop stopped by user.")
     else:
         parser.print_help()
 

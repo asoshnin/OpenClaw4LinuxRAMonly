@@ -1,7 +1,7 @@
 ---
 type: registry
 generated_by: The Librarian
-last_updated: 2026-03-30T11:52:30.390092
+last_updated: 2026-03-31T01:00:25.390526
 ---
 
 # Agentic Factory Registry
@@ -10,6 +10,16 @@ last_updated: 2026-03-30T11:52:30.390092
 
 - **Mega-Orchestrator (Kimi)** (`kimi-orch-01`) - v1.3
 - **The Librarian** (`lib-keeper-01`) - v1.0
+- **Synthesized Agent - red-team-auditor-01** (`red-team-auditor-01`) - v1.0
+  - *Tier: PRO. Backlog directive: Log structural, logical, and epistemic flaws found during audits.*
+- **MultiCriteriaEvaluationAssistant** (`multi-criteria-evaluator-01`) - v1.0
+  - *The Critic: Evaluates artifacts rigorously using dual scoring (raw/capped) and hard-fail logic.*
+- **BlockImproverAgent** (`block-improver-01`) - v1.0
+  - *The Actor: Improves markdown chunks using Hybrid Context mapping and strict Header Locking.*
+- **StrategistAgent** (`strategist-01`) - v1.0
+  - *The Brain: Analyzes Red Team reports and writes new paragraphs for targeted document improvements.*
+- **SplicerAgent** (`splicer-01`) - v1.0
+  - *The Editor: Converts proposed document changes into strict SEARCH/REPLACE diff blocks.*
 
 ## System Pipelines
 
@@ -19,6 +29,7 @@ last_updated: 2026-03-30T11:52:30.390092
 
 - **SKILL** (`md`) — Discovered from prompt_architect/SKILL.md
 - **__init__** (`py`) — Discovered from vault_tools/__init__.py
+- **architect** (`md`) — Tools for discovering and deploying Factory pipelines and agents.
 - **architect_tools** (`py`) — Discovered from architect/architect_tools.py
 - **config** (`py`) — Discovered from config.py
 - **db_utils** (`py`) — Discovered from librarian/db_utils.py
@@ -33,6 +44,7 @@ last_updated: 2026-03-30T11:52:30.390092
 - **obsidian_bridge** (`py`) — Discovered from obsidian_bridge.py
 - **obsidian_vault_bootstrap** (`py`) — Discovered from obsidian_vault_bootstrap.py
 - **project_init** (`py`) — Discovered from architect/project_init.py
+- **prompt_architect** (`md`) — A module for managing epistemic gaps and generating backlog reports.
 - **prompt_architect_tools** (`py`) — Discovered from prompt_architect/prompt_architect_tools.py
 - **router** (`py`) — Discovered from router.py
 - **safety_engine** (`py`) — Discovered from librarian/safety_engine.py
@@ -71,6 +83,7 @@ last_updated: 2026-03-30T11:52:30.390092
 - **openclaw::converters** (`md`) — Discovered from kimi-claw/node_modules/nan/doc/converters.md
 - **openclaw::errors** (`md`) — Discovered from kimi-claw/node_modules/nan/doc/errors.md
 - **openclaw::json** (`md`) — Discovered from kimi-claw/node_modules/nan/doc/json.md
+- **openclaw::kimi-claw** (`json`) — Connector plugin that bridges a remote /gateway server with the local OpenClaw Gateway.
 - **openclaw::make_msvc_package** (`py`) — Discovered from kimi-claw/node_modules/node-pty/deps/winpty/ship/make_msvc_package.py
 - **openclaw::maybe_types** (`md`) — Discovered from kimi-claw/node_modules/nan/doc/maybe_types.md
 - **openclaw::methods** (`md`) — Discovered from kimi-claw/node_modules/nan/doc/methods.md

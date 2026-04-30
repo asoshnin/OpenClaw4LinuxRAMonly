@@ -19,7 +19,28 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Workspace root: controlled entirely by env var.
+# GLOBAL PLATFORM HUB: Core location for security, cost tracking, and system limits
+# Independent of multi-project workspace switching.
+# Default: ~/.openclaw/workspace
+# ---------------------------------------------------------------------------
+# Resolve _SOURCE_ROOT first so the Global Hub can use it
+_SOURCE_ROOT = Path(__file__).resolve().parent.parent
+
+_global_hub_env = os.environ.get("OPENCLAW_GLOBAL_HUB", "")
+if _global_hub_env:
+    GLOBAL_WORKSPACE_ROOT = Path(_global_hub_env).expanduser().resolve()
+else:
+    # Most likely active database is historically in the repo root workspace
+    GLOBAL_WORKSPACE_ROOT = _SOURCE_ROOT / "workspace"
+
+GLOBAL_WORKSPACE_ROOT.mkdir(parents=True, exist_ok=True)
+
+GLOBAL_COST_LEDGER_PATH = GLOBAL_WORKSPACE_ROOT / "cost_ledger.db"
+GLOBAL_HALT_FILE        = GLOBAL_WORKSPACE_ROOT / ".watchdog_halt"
+GLOBAL_DB_PATH          = GLOBAL_WORKSPACE_ROOT / "factory.db"
+
+# ---------------------------------------------------------------------------
+# Workspace root: Project-level overrides for Sprints, Tasks, etc.
 # Default: ~/.openclaw/workspace
 # To override: export OPENCLAW_WORKSPACE=/your/path
 # ---------------------------------------------------------------------------
@@ -134,9 +155,8 @@ def get_project_paths(project_root: Path | None = None) -> dict[str, Path]:
     }
 
 
-# Convenience aliases — evaluated at import time from the Global Hub root
+# Convenience aliases — evaluated at import time from the source tree root
 _GLOBAL_ROOT = _SOURCE_ROOT
-GLOBAL_DB_PATH: Path = _GLOBAL_ROOT / "workspace" / "factory.db"   # Static Global Hub DB
 DOCS_DIR:       Path = _GLOBAL_ROOT / "docs"
 MEMORY_DIR:     Path = _GLOBAL_ROOT / "memory"
 
@@ -168,6 +188,23 @@ def get_inference_tier_order(agent_id: str) -> list[tuple[str, str]]:
         return [('cloud', CLOUD_MODEL), ('gpu', REMOTE_LOCAL_MODEL), ('cpu', LOCAL_MODEL)]
     return [('gpu', REMOTE_LOCAL_MODEL), ('cpu', LOCAL_MODEL), ('cloud', CLOUD_MODEL)]
 
+def truncate_history(prompt: str, max_length: int = 12000) -> str:
+    """Implement Security Invariant #10: Context Guard with Middle-Truncation.
+    Preserves the system prompt/task head and the tail (latest messages).
+    """
+    if len(prompt) <= max_length:
+        return prompt
+    
+    # Keep head (system prompt, rules, task instructions) and tail (recent logic).
+    gap_text = "\n\n...[SYSTEM: MIDDLE CONTEXT TRUNCATED (Context Guard 12k Limit)]...\n\n"
+    keep_total = max_length - len(gap_text)
+    
+    head_len = 4000
+    tail_len = keep_total - head_len
+    
+    return prompt[:head_len] + gap_text + prompt[-tail_len:]
+
+
 def call_inference(tier: str, model: str, prompt: str, is_sensitive: bool = False, timeout: float = 600.0) -> str:
     """Unified inference caller that handles both cloud and tiered local Ollama calls.
     
@@ -187,12 +224,22 @@ def call_inference(tier: str, model: str, prompt: str, is_sensitive: bool = Fals
         KeyError: If Gemini API key is missing.
         PermissionError: If is_sensitive=True and tier is cloud.
     """
+    # ── Context Guard (Security Invariant #10) ──
+    prompt = truncate_history(prompt)
+    
     if tier == 'cloud':
         if is_sensitive:
             raise PermissionError("Airlock Breach: Attempted to send sensitive data to the cloud.")
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
-            raise KeyError("GEMINI_API_KEY environment variable not set.")
+            env_file = WORKSPACE_ROOT / ".env"
+            if env_file.exists():
+                for line in env_file.read_text().splitlines():
+                    if line.startswith("GEMINI_API_KEY="):
+                        api_key = line.split("=", 1)[1].strip().strip('"').strip("'")
+                        break
+        if not api_key:
+            raise KeyError(f"GEMINI_API_KEY environment variable not set, and not found in {env_file}")
             
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
@@ -203,9 +250,20 @@ def call_inference(tier: str, model: str, prompt: str, is_sensitive: bool = Fals
             with urllib.request.urlopen(req, timeout=timeout) as response:
                 result = json.loads(response.read().decode('utf-8'))
                 try:
-                    return result["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    text_out = result["candidates"][0]["content"]["parts"][0]["text"].strip()
                 except (KeyError, IndexError):
                     raise RuntimeError(f"Error parsing cloud model output for {model}.")
+                # ── Cost Ledger hook (non-blocking; errors are silently logged) ──
+                try:
+                    from openclaw_skills.watchdog.cost_ledger import get_ledger
+                    get_ledger().record(
+                        model=model,
+                        prompt_chars=len(prompt),
+                        response_chars=len(text_out),
+                    )
+                except Exception as _ledger_err:
+                    logger.debug("Cost ledger record failed (non-fatal): %s", _ledger_err)
+                return text_out
         except urllib.error.URLError as e:
             raise RuntimeError(f"Cloud Inference Error ({model}): {e}")
 

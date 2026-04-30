@@ -98,12 +98,17 @@ def _ensure_extended_columns(conn: sqlite3.Connection) -> None:
 
 
 def _load_tasks(conn: sqlite3.Connection) -> list[dict]:
-    """Return all tasks enriched with wave name, ordered by sprint then id."""
+    """Return all tasks enriched with wave name, ordered by sprint then id.
+
+    Selects `payload` (the post-RT-SCHEMA-01 column name). The COALESCE
+    provides an empty-string default for rows where payload IS NULL.
+    Databases must be migrated via migrate_lib01_2.py before calling this.
+    """
     cur = conn.execute("""
         SELECT
             t.id,
             t.domain,
-            t.description,
+            COALESCE(t.payload, '') AS payload,
             t.status,
             COALESCE(t.priority, '') AS priority,
             COALESCE(t.source_doc, '') AS source_doc,
@@ -142,7 +147,7 @@ def _build_status_table(tasks: list[dict]) -> str:
     for t in tasks:
         wave_num = _WAVE_LABEL.get(t["wave"], t["wave"])
         rows.append(
-            f"| **{t['id']}** | {wave_num} | {t['domain']} | {t['description']} "
+            f"| **{t['id']}** | {wave_num} | {t['domain']} | {t['payload']} "
             f"| {t['source_doc'] or ''} | {t['priority'] or ''} | {_status_display(t['status'])} |"
         )
     return header + "\n".join(rows)
@@ -152,7 +157,7 @@ def _build_appendix_specs(tasks: list[dict]) -> str:
     header = "| ID | Requirements and Specifications |\n|---|---|\n"
     rows = []
     for t in tasks:
-        spec = t["description"]
+        spec = t["payload"]
         rows.append(f"| **{t['id']}** | {spec} |")
     return header + "\n".join(rows)
 

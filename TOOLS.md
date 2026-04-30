@@ -189,3 +189,28 @@ python3 openclaw_skills/architect/architect_tools.py vault-health-check \
 | `register_from_package` | Registers an agent from an `AgentIntelligencePackage` JSON payload, saves locally, and syncs safely to Obsidian. | `package_json`, `[db_path]` |
 | `synthesize_backlog_report` | Atomically generates the priority BACKLOG.md from raw `epistemic_backlog` gaps | `[db_path]`, `[output_path]` |
 
+---
+
+## Safety Monitoring Tools
+
+### `safety_watchdog.py`
+**Path:** `openclaw_skills/watchdog/safety_watchdog.py`  
+**Role:** Background daemon that monitors cloud spend and agent loop cycling.
+
+| Mode | Description | Key Environment Variables |
+|---|---|---|
+| `python3 -m ...` | Starts the polling daemon (default 30s) | `OPENCLAW_DAILY_COST_LIMIT_USD`, `OPENCLAW_LOOP_THRESHOLD` |
+
+### `control_tower.py`
+**Path:** `control_tower.py` (Repo Root)  
+**Role:** Real-time Tkinter dashboard for monitoring architecture state and emergency stops.
+
+| Action | Description |
+|---|---|
+| `python3 control_tower.py` | Launches GUI (requires `$DISPLAY`) |
+| **🛑 STOP** | Triggers manual kill: freezes tasks, sets halt sentinel, kills orchestrator |
+| **⏸ PAUSE** | Sets the `.watchdog_halt` sentinel to prevent new task claims |
+
+**Sentinel File:** `workspace/.watchdog_halt` — Created by watchdog or UI to block orchestrator execution. Delete this file to resume operations.
+
+

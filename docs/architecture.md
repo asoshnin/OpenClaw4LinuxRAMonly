@@ -43,16 +43,22 @@ The `factory.db` schema includes an `epistemic_backlog` table. This serves as th
 | `vector_archive.py` | `openclaw_skills/librarian/` | sqlite-vec table init + `find_faint_paths()` KNN search |
 | `self_healing.py` | `openclaw_skills/librarian/` | Circuit-breaking JSON parser (3 retries → RuntimeError) |
 | `config.py` | `openclaw_skills/` | `WORKSPACE_ROOT` + explicit Tiered Inference router configuration |
+| `safety_watchdog.py`| `openclaw_skills/watchdog/`| Runaway loop detection + cost cap enforcement daemon |
+| `cost_ledger.py`    | `openclaw_skills/watchdog/`| SQLite-backed cloud inference cost tracking |
+| `control_tower.py`  | (repo root) | Real-time monitoring GUI + Emergency Stop |
+
 
 ## Security Invariants
 
 1. **HITL Gate** — `deploy_pipeline_with_ui()` requires a native OS dialog click; cannot be bypassed in code.
 2. **Burn-on-Read Token** — token file deleted before comparison; no replay window.
-3. **Airlock** — `validate_path()` uses `os.path.realpath()` + `os.sep` suffix guard; `PermissionError` on breach.
-4. **Routing Halt** — `is_sensitive=True` + `tier=cloud` raises `PermissionError` at the router level; cloud is never called.
-5. **Epistemic Scrubber** — all external data (vault notes, web clips) passes through IPI-stripping before vector storage.
-6. **Context Guard** — 12,000-character truncation on all LLM inputs (head+tail preserved).
-7. **System Agent Protection** — `is_system=1` agents cannot be torn down.
+5. **System Agent Protection** — `is_system=1` agents cannot be torn down.
+6. **Safety Watchdog** — `safety_watchdog.py` kills runaway agent loops and cost breaches via `SIGTERM` + `WATCHDOG_KILL` audit events.
+7. **Halt Sentinel** — `workspace/.watchdog_halt` prevents the orchestrator from claiming new tasks; manual or automated override.
+8. **Cost Ledger** — Every cloud inference is recorded with token-based USD estimates; provides a cryptographically distinct audit trail of cloud spend.
+9. **Airlock** — `validate_path()` uses `os.path.realpath()` + `os.sep` suffix guard; `PermissionError` on breach.
+10. **Context Guard** — 12,000-character truncation on all LLM inputs.
+
 
 ## Test Coverage
 
@@ -74,5 +80,9 @@ pytest tests/ -v   # Run all 94 tests
 | `OBSIDIAN_API_KEY` | For vault sync | — | Local REST API plugin bearer token |
 | `OBSIDIAN_BASE_URL` | No | `http://127.0.0.1:27123` | Must resolve to loopback — enforced at construction |
 | `OBSIDIAN_VAULT_PATH` | For bootstrap | — | Absolute path to vault root |
+| `OPENCLAW_DAILY_COST_LIMIT_USD` | No | `10.0` | Hard daily spend cap in USD |
+| `OPENCLAW_LOOP_THRESHOLD` | No | `5` | Repetitions before loop kill |
+| `OPENCLAW_WATCHDOG_INTERVAL` | No | `30` | Watchdog poll interval (seconds) |
+
 
 See `.env.example` for full documentation of all variables.

@@ -37,7 +37,10 @@ Are you an Epistemic Navigator ("vibe coder") who wants to command the factory p
 Navigator (Human)
     └── Mega-Orchestrator [kimi-orch-01]    ← architect_tools.py
             └── The Librarian [lib-keeper-01]   ← librarian_ctl.py
+            └── The Librarian [lib-keeper-01]   ← librarian_ctl.py
                     └── Vector Archive + Safety Engine  ← sqlite-vec + Ollama
+    └── Control Tower [GUI]  ← control_tower.py
+    └── Safety Watchdog [Daemon]  ← safety_watchdog.py
 ```
 
 **Three memory layers:**
@@ -52,6 +55,9 @@ Navigator (Human)
 - **HITL-Guarded Router:** Sensitive + cloud routing is unconditionally blocked with `[SYS-HALT]` — cloud never called, every decision audited
 - **Static KB:** Security rules are committed JSON injected as the first prompt block — agents cannot override them through task text
 - **Context Guard:** All LLM calls are middle-truncated at 12,000 characters
+- **Safety Watchdog:** Background daemon enforcing daily spend caps and loop-cycling detection (automatic SIGTERM kill-switch)
+- **Control Tower:** Real-time dashboard with Emergency Stop and Pause/Resume functionality
+- **Cost Ledger:** Append-only SQL audit of every cloud inference call and estimated USD spend
 
 For the full technical reference, see [`docs/architecture.md`](docs/architecture.md).
 
@@ -115,6 +121,12 @@ python3 openclaw_skills/architect/architect_tools.py write-to-vault \
 # 7. (Optional) Run a vault health scan
 python3 openclaw_skills/architect/architect_tools.py vault-health-check \
   --vault-root "$OBSIDIAN_VAULT_PATH"
+
+# 8. (NEW) Start Safety Monitoring
+# Set a daily spend cap (default $10.00)
+export OPENCLAW_DAILY_COST_LIMIT_USD=10.00
+python3 -m openclaw_skills.watchdog.safety_watchdog &
+python3 control_tower.py
 ```
 
 > 📖 **New to OpenClaw?** Read the [Getting Started Guide](docs/getting_started.md) for a complete walkthrough — including annotated terminal output and how to understand the HITL popup.

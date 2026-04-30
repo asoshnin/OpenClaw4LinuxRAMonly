@@ -80,8 +80,15 @@ def _make_db(path: Path) -> None:
             depends_on TEXT,
             assigned_to TEXT,
             domain TEXT,
-            description TEXT,
-            status TEXT DEFAULT 'pending',
+            payload TEXT,
+            is_sensitive BOOLEAN DEFAULT 0,
+            required_tier TEXT DEFAULT 'cpu',
+            status TEXT DEFAULT 'queued'
+                CHECK(status IN (
+                    'queued', 'pending', 'processing', 'processing_subagent',
+                    'blocked', 'in_progress', 'awaiting_review',
+                    'complete', 'completed', 'failed', 'pending_hitl'
+                )),
             test_summary TEXT,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -93,7 +100,7 @@ def _make_db(path: Path) -> None:
     conn.commit()
     wave_id = conn.execute("SELECT id FROM sprints WHERE name='Wave 1 Foundation'").fetchone()[0]
     conn.executemany(
-        "INSERT OR IGNORE INTO tasks (id, sprint_id, domain, description, status) VALUES (?, ?, ?, ?, ?)",
+        "INSERT OR IGNORE INTO tasks (id, sprint_id, domain, payload, status) VALUES (?, ?, ?, ?, ?)",
         [
             ("BL-00",  wave_id, "DB",       "Epistemic backlog migration",   "complete"),
             ("LIB-02", wave_id, "Librarian","Implement sync_backlog utility", "in_progress"),

@@ -21,5 +21,6 @@ Whenever the human Navigator asks to "plan", "submit", or "start" a new Agentic 
 
 3. **Trigger the Orchestrator Execution Loop**  
 `python3 openclaw_skills/orchestrator/factory_cli.py trigger`
+*(Note: This starts a continuous background daemon with Loop Backoff and Watchdog interval protections. It processes the queue sequentially until stopped).*
 
 Always log the task IDs successfully returned.

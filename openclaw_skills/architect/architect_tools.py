@@ -23,11 +23,8 @@ except ImportError:
     TK_AVAILABLE = False
 
 # Resolve workspace config — never hardcode paths
-try:
-    from config import WORKSPACE_ROOT, TOKEN_FILE, OLLAMA_URL, LOCAL_MODEL, get_active_ollama_url, INFERENCE_ALERT, get_inference_tier_order, call_inference
-except ImportError:
-    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-    from config import WORKSPACE_ROOT, TOKEN_FILE, OLLAMA_URL, LOCAL_MODEL, get_active_ollama_url, INFERENCE_ALERT, get_inference_tier_order, call_inference
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from openclaw_skills.config import WORKSPACE_ROOT, TOKEN_FILE, OLLAMA_URL, LOCAL_MODEL, get_active_ollama_url, INFERENCE_ALERT, get_inference_tier_order, call_inference
 
 # ObsidianBridge — optional dependency (Sprint 7); graceful if not yet installed
 try:

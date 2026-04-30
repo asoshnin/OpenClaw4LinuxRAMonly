@@ -5,9 +5,11 @@ Ties together task queue claiming, subagent (Pi) delegation, and auditor verific
 import os
 import uuid
 import json
+import signal
 import logging
 import subprocess
 import sys
+from pathlib import Path
 
 # Ensure imports work from skills dir
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -18,6 +20,16 @@ from openclaw_skills.orchestrator.artifact_gatherer import get_safe_diff
 from openclaw_skills.architect.architect_tools import run_audit
 
 log = logging.getLogger(__name__)
+
+
+def _get_pid_file(project_root: str) -> Path:
+    ws = Path(project_root) / "workspace"
+    ws.mkdir(parents=True, exist_ok=True)
+    return ws / ".orchestrator.pid"
+
+
+def _get_halt_file(project_root: str) -> Path:
+    return Path(project_root) / "workspace" / ".watchdog_halt"
 
 def _get_current_git_hash(repo_dir: str) -> str:
     try:
@@ -35,6 +47,28 @@ def run_orchestrator(inbound_message: str = None) -> dict:
         project_root = os.path.dirname(project_root) # go up to project root
         
     project_root = os.path.abspath(project_root)
+
+    # ── Safety Gate: Watchdog Halt Check ──────────────────────────────────────
+    halt_file = _get_halt_file(project_root)
+    if halt_file.exists():
+        log.warning(
+            "WATCHDOG HALT sentinel detected at %s. "
+            "Refusing to claim new tasks. Remove the file to resume.",
+            halt_file,
+        )
+        return {"status": "halted", "message": f"Watchdog halt is active. See {halt_file}"}
+
+    # ── PID Registration ──────────────────────────────────────────────────────
+    pid_file = _get_pid_file(project_root)
+    pid_file.write_text(str(os.getpid()))
+    log.debug("Orchestrator PID %d written to %s", os.getpid(), pid_file)
+
+    def _cleanup_pid(signum=None, frame=None):
+        pid_file.unlink(missing_ok=True)
+        log.debug("Orchestrator PID file removed.")
+
+    signal.signal(signal.SIGTERM, _cleanup_pid)
+    signal.signal(signal.SIGINT, _cleanup_pid)
     
     try:
         if inbound_message:
@@ -80,3 +114,4 @@ def run_orchestrator(inbound_message: str = None) -> dict:
         return {"status": "error", "message": str(e)}
     finally:
         manager.close()
+        _cleanup_pid()

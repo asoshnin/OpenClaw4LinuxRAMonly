@@ -3,6 +3,77 @@
 All notable changes are listed by Sprint. This project follows a sprint-based delivery model documented in `_Development/OpenClaw/`.
 
 ---
+## Control Tower Safety System (2026-04-01) — Runaway Loop & Cost Protection
+
+**Motivation:** A runaway agent loop burned ~$1K in cloud API costs overnight with no kill switch.
+
+### Changes
+
+- **`openclaw_skills/watchdog/__init__.py`** — New `watchdog` package.
+- **`openclaw_skills/watchdog/cost_ledger.py`** — Append-only cost ledger in a separate `workspace/cost_ledger.db` (avoids sqlite-vec load issues with `factory.db`). Records every `call_inference()` cloud call with model, character counts, and estimated USD. Per-model rates cover all Gemini variants. Exposes `get_today_total_usd()`, `get_recent_events()`, and a module-level singleton `get_ledger()`.
+- **`openclaw_skills/config.py`** — `call_inference()` cloud branch now calls `cost_ledger.record()` after every successful response. Lazily imported; ledger errors are logged at DEBUG and never propagate to callers.
+- **`openclaw_skills/watchdog/safety_watchdog.py`** — Background polling daemon (default: 30s interval). Enforces two kill conditions: (1) daily spend ≥ `OPENCLAW_DAILY_COST_LIMIT_USD` (default `$10.00`), (2) same `agent_id+action` repeating ≥ `OPENCLAW_LOOP_THRESHOLD` (default 5) times in `OPENCLAW_LOOP_WINDOW_MINUTES` (default 5 min). On breach: writes `WATCHDOG_KILL` audit log, freezes all active tasks to `pending_hitl`, writes `workspace/.watchdog_halt` sentinel, sends `SIGTERM` to orchestrator PID, shows tkinter popup if `$DISPLAY` is available.
+- **`openclaw_skills/factory_orchestrator.py`** — Writes `workspace/.orchestrator.pid` on entry, removes on clean exit (SIGTERM/SIGINT handlers). Checks `workspace/.watchdog_halt` sentinel at the top of `run_orchestrator()` and returns `{status: "halted"}` immediately if present.
+- **`control_tower.py`** (repo root) — Standalone tkinter dashboard. Five tabs: Audit Log, Agents, Pipelines, Cost Ledger, Processes. Top bar shows cost today vs cap with colour-coded progress bar (green → yellow → orange → red). **🛑 Emergency Stop** button (requires confirmation) triggers the full watchdog kill path. **⏸ Pause / ▶ Resume** toggle writes/removes the halt sentinel. Auto-refreshes every 5 seconds. Gracefully exits with a helpful message if `$DISPLAY` is not set.
+- **`tests/test_watchdog.py`** — 16 unit tests: CostLedger accumulation, per-model rate ordering, today-total isolation, cost breach detection, loop cycling detection (threshold and time-window boundary cases), and halt-file sentinel detection.
+- **`pytest.ini`** — Added `timeout = 15` to prevent DB-related test hangs.
+
+### Safety Configuration (env vars)
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENCLAW_DAILY_COST_LIMIT_USD` | `10.0` | Hard daily spend cap in USD |
+| `OPENCLAW_LOOP_THRESHOLD` | `5` | Repeat count before runaway declared |
+| `OPENCLAW_LOOP_WINDOW_MINUTES` | `5` | Time window for loop detection |
+| `OPENCLAW_WATCHDOG_INTERVAL` | `30` | Watchdog poll interval (seconds) |
+
+### Usage
+
+```bash
+# Start watchdog daemon (keep running in a terminal)
+python3 -m openclaw_skills.watchdog.safety_watchdog
+
+# Open Control Tower GUI (requires $DISPLAY)
+python3 control_tower.py
+
+# Manual emergency halt (writes sentinel file)
+touch workspace/.watchdog_halt
+
+# Resume after investigation
+rm workspace/.watchdog_halt
+```
+
+---
+## Red Team Patch RT-SCHEMA-01 (2026-03-30) — Schema-Code Desync Fix
+
+
+**Severity:** Critical — every call to `factory_cli.py submit` crashed with `sqlite3.OperationalError: table tasks has no column named payload`.
+
+### Root Cause
+`intake.py` (BL-01) was updated to insert `payload`, `is_sensitive`, `required_tier`, and set `status='queued'` into the `tasks` table. The live databases (`workspace/factory.db`, `workspace/project.db`) still had the legacy DDL: column `description` (no `payload`), and `CHECK(status IN ('pending', 'in_progress', 'awaiting_review', 'complete', 'failed', 'blocked'))` — both incompatible with the new inserts.
+
+### Fix
+- **`openclaw_skills/librarian/migrate_lib01_2.py`** — Repurposed as the RT-SCHEMA-01 Table Rebuild migration. Uses the SQLite-safe pattern (create `tasks_new`, copy data with `description → payload` mapping, drop old table, rename). Idempotent: re-running on an already-migrated DB logs and exits cleanly. Accepts multiple DB paths via CLI in one invocation.
+- **`openclaw_skills/librarian/db_utils.py`** — Updated `initialize_project_schema()` to the canonical post-migration DDL: `payload`, `is_sensitive BOOLEAN DEFAULT 0`, `required_tier TEXT DEFAULT 'cpu'`, expanded `CHECK` constraint allowing all runtime status values, plus `attempt_count`, `max_retries`, `last_error`, `session_id`, `baseline_commit` columns. All future `factory-init` projects automatically get the correct schema.
+- **`openclaw_skills/librarian/sync_backlog.py`** — `_load_tasks()` now selects `COALESCE(t.payload, t.description, '') AS payload`; `_build_status_table()` and `_build_appendix_specs()` updated to use `t['payload']` dict key. Backward compatible with pre-migration snapshots.
+- **`tests/test_lib02_sync.py`** — Updated `_make_db()` inline DDL and `executemany` INSERT to use `payload` column and new CHECK constraint.
+- **`workspace/kimi-orch-01.md`** — Appended `SCHEMA IMMUTABILITY RULE` section to the Mega-Orchestrator system prompt.
+- **`workspace/prompt-architect.md`** — Injected `<schema_immutability_rule>` block into `<mandatory_instructions>`.
+- **`AGENTS.md`** — Added canonical `tasks` table schema reference and Schema Mutation Protocol.
+
+### Verification
+```bash
+# Apply migration to live databases
+python3 openclaw_skills/librarian/migrate_lib01_2.py workspace/factory.db workspace/project.db
+
+# Smoke test
+python3 openclaw_skills/orchestrator/factory_cli.py submit "Test task"
+
+# Full test suite
+python3 -m pytest tests/ -v
+```
+
+---
 ## Wave 1 Foundation + Wave 1.5 Context Isolation (2026-03-29) — v2026.3.28
 
 **277 tests passing** (+98 from Wave 0 baseline of 179).
