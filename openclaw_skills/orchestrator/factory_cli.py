@@ -1,9 +1,12 @@
-"""
-CLI Wrapper for Agentic Factory Orchestrator
-"""
 import argparse
 import sys
 import os
+import subprocess
+import time
+import json
+
+# Force workspace to prevent Airlock Breach
+os.environ["OPENCLAW_WORKSPACE"] = "/home/alexey/openclaw-inbox/agentic_factory"
 
 # Add project root to sys path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
@@ -34,21 +37,44 @@ def main():
         task_ids = intake.decompose_and_submit(args.goal)
         print(f"Plan created with tasks: {task_ids}")
     elif args.command == "trigger":
-        import time
-        import json
         watchdog_interval = float(os.environ.get("OPENCLAW_WATCHDOG_INTERVAL", "30.0"))
         print(f"Starting orchestration loop... (Watchdog interval: {watchdog_interval}s)")
         try:
             while True:
+                # Phase 2: Claim Task
                 res = run_orchestrator()
-                # Check for idle or halted
+                
                 if not res or res.get("status") in ["idle", "halted"]:
                     print(f"Queue idle/halted. Sleeping {watchdog_interval}s...")
                     time.sleep(watchdog_interval)
                 else:
-                    print(f"Task processed: {json.dumps(res)}")
-                    print("Cooling down 5s before next task...")
-                    time.sleep(5)
+                    # Expecting a spawn_payload dict
+                    if isinstance(res, dict) and res.get("runtime") == "acp":
+                        print(f"Spawning subagent for task: {res.get('label')}")
+                        agent_id = res.get("agentId", "main")
+                        task_str = res.get("task", "")
+                        
+                        # Synchronously spawn OpenClaw agent
+                        try:
+                            subprocess.run([
+                                "openclaw", "agent", 
+                                "--agent", agent_id, 
+                                "--message", task_str
+                            ], check=False, timeout=300)
+                        except subprocess.TimeoutExpired:
+                            print(f"Warning: Subagent {agent_id} timed out after 300 seconds.")
+                        
+                        # Phase 1: Audit & Complete Task
+                        print(f"Subagent finished. Triggering Audit Phase.")
+                        audit_res = run_orchestrator(inbound_message="Subagent finished.")
+                        print(f"Audit Result: {json.dumps(audit_res)}")
+                        
+                        print("Cooling down 5s before next task...")
+                        time.sleep(5)
+                    else:
+                        print(f"Unknown payload processed: {json.dumps(res)}")
+                        time.sleep(5)
+                        
         except KeyboardInterrupt:
             print("\nOrchestrator loop stopped by user.")
     else:

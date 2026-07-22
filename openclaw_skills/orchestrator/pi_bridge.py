@@ -14,7 +14,7 @@ class CodingAgentBridge:
             
         payload = {
             "runtime": "acp",
-            "agentId": "pi",
+            "agentId": "main",
             "mode": "run",
             "task": task_str,
             "cwd": project_root,

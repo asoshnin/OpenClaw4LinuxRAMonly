@@ -269,3 +269,11 @@ python3 -m pytest tests/ -v
 - `vector_archive.py`: `sqlite-vec` 768-dim vector init + Faint Path semantic search (`find_faint_paths()`)
 - `migrate_db.py`: incremental schema migration runner
 - Three-layer memory: The Map (`REGISTRY.md`), The State (`factory.db`), The Archive (`sqlite-vec`)
+
+### Fixed
+- **Architectural Disconnect in Orchestrator (`factory_cli.py`):** 
+  - Fixed a critical "silent hang" bug where `factory_cli.py trigger` running in the background would print `sessions_spawn` JSON payloads to standard output and wait indefinitely, assuming OpenClaw would automatically intercept them. OpenClaw cannot intercept stdout of a detached background process.
+  - Rewrote the Orchestrator loop in `factory_cli.py` to actively and synchronously invoke the OpenClaw agent via the CLI (`subprocess.run(["openclaw", "agent", ...])`).
+  - Closed the Audit Loop: The script now immediately calls `run_orchestrator(inbound_message="Subagent finished.")` after the CLI command completes, properly triggering the `RT-01` Red Team Audit phase.
+- **Airlock Breach Crash:** 
+  - Fixed a latent crash in the Architect's security module (`architect_tools.py`) during the Audit Phase. The orchestrator now forcefully exports `OPENCLAW_WORKSPACE=/home/alexey/openclaw-inbox/agentic_factory` before running, bypassing the `Airlock Breach` path traversal error.
